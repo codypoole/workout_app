@@ -30,7 +30,9 @@ export type IconName =
   | 'settings'
   | 'minus'
   | 'copy'
-  | 'phone'
+  | 'google'
+  | 'apple'
+  | 'mail'
   | 'logout';
 
 const PATHS: Record<IconName, JSX.Element> = {
@@ -124,10 +126,12 @@ const PATHS: Record<IconName, JSX.Element> = {
       <path d="M5 15V5a2 2 0 0 1 2-2h8" />
     </>
   ),
-  phone: (
+  google: <path d="M21 12.2c0-.6-.1-1.2-.2-1.7H12v3.4h5.1a4.4 4.4 0 0 1-1.9 2.9v2.4h3.1c1.8-1.7 2.7-4.1 2.7-7z M12 21c2.4 0 4.5-.8 6-2.2l-3.1-2.4c-.8.6-1.9.9-2.9.9-2.3 0-4.2-1.5-4.9-3.6H3.9v2.4A9 9 0 0 0 12 21z M7.1 13.7a5.4 5.4 0 0 1 0-3.4V7.9H3.9a9 9 0 0 0 0 8.2zM12 6.6c1.3 0 2.5.5 3.4 1.3l2.6-2.6A9 9 0 0 0 3.9 7.9l3.2 2.4C7.8 8.1 9.7 6.6 12 6.6z" />,
+  apple: <path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C3.79 16.17 4.36 9.43 8.7 9.21c1.26.06 2.14.7 2.88.75.93-.19 1.82-.86 2.83-.78 1.36.12 2.34.69 2.96 1.76-2.62 1.57-2 4.98.53 5.94-.45 1.2-.99 2.38-1.85 3.4zM12.04 9.15c-.13-2.2 1.65-4.07 3.71-4.15.29 2.45-2.22 4.28-3.71 4.15z" />,
+  mail: (
     <>
-      <rect x="7" y="2" width="10" height="20" rx="2" />
-      <path d="M11 18h2" />
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <path d="m3 7 9 5 9-5" />
     </>
   ),
   logout: <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" />,
@@ -140,6 +144,13 @@ interface IconProps {
 }
 
 export function Icon({ name, size = 22, stroke = 2 }: IconProps) {
+  if (name === 'google' || name === 'apple') {
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
+        {PATHS[name]}
+      </svg>
+    );
+  }
   return (
     <svg
       width={size}

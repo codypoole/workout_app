@@ -12,9 +12,12 @@ import {
   auth,
   db,
   firebaseEnabled,
-  RecaptchaVerifier,
-  signInWithPhoneNumber,
-  type ConfirmationResult,
+  GoogleAuthProvider,
+  OAuthProvider,
+  signInWithPopup,
+  sendSignInLinkToEmail,
+  isSignInWithEmailLink,
+  signInWithEmailLink,
 } from '@/lib/firebase';
 
 export type StoreStatus = 'loading' | 'ready' | 'error' | 'unauthenticated';
@@ -22,7 +25,8 @@ export type StoreStatus = 'loading' | 'ready' | 'error' | 'unauthenticated';
 export interface AccountInfo {
   mode: 'firebase' | 'local';
   uid: string | null;
-  phoneNumber: string | null;
+  displayName: string | null;
+  email: string | null;
 }
 
 export interface StoreSnapshot {
@@ -33,6 +37,7 @@ export interface StoreSnapshot {
 }
 
 const LOCAL_KEY = 'workoutpwa.v1';
+const EMAIL_KEY = 'workoutpwa.emailForSignIn';
 const DEFAULT_SETTINGS: Settings = {
   theme: 'midnight',
   type: 'athletic',
@@ -66,9 +71,6 @@ export class Store {
   private writeTimer: ReturnType<typeof setTimeout> | null = null;
   private dirty = false;
 
-  private recaptchaVerifier: RecaptchaVerifier | null = null;
-  private confirmationResult: ConfirmationResult | null = null;
-
   constructor() {
     this.snapshot = {
       state: null,
@@ -76,7 +78,8 @@ export class Store {
       account: {
         mode: firebaseEnabled ? 'firebase' : 'local',
         uid: null,
-        phoneNumber: null,
+        displayName: null,
+        email: null,
       },
       error: null,
     };
@@ -138,6 +141,8 @@ export class Store {
 
   /* ---------- firebase backend ---------- */
   private initFirebase() {
+    this.completeEmailLinkSignIn();
+
     onAuthStateChanged(auth!, (user) => {
       if (this.docUnsub) {
         this.docUnsub();
@@ -152,7 +157,7 @@ export class Store {
         this.set({
           status: 'unauthenticated',
           state: null,
-          account: { mode: 'firebase', uid: null, phoneNumber: null },
+          account: { mode: 'firebase', uid: null, displayName: null, email: null },
         });
         return;
       }
@@ -161,7 +166,8 @@ export class Store {
         account: {
           mode: 'firebase',
           uid: user.uid,
-          phoneNumber: user.phoneNumber || null,
+          displayName: user.displayName || null,
+          email: user.email || null,
         },
       });
 
@@ -212,33 +218,50 @@ export class Store {
     }, 400);
   }
 
-  /* ---------- phone auth ---------- */
-  setupRecaptcha = (buttonId: string): void => {
+  /* ---------- email link (passwordless) auth ---------- */
+  sendEmailLink = async (email: string): Promise<void> => {
+    if (!auth) throw new Error('Auth not initialized');
+    const actionCodeSettings = {
+      url: window.location.origin,
+      handleCodeInApp: true,
+    };
+    await sendSignInLinkToEmail(auth, email, actionCodeSettings);
+    localStorage.setItem(EMAIL_KEY, email);
+  };
+
+  private completeEmailLinkSignIn() {
     if (!auth) return;
-    if (this.recaptchaVerifier) {
-      this.recaptchaVerifier.clear();
+    if (isSignInWithEmailLink(auth, window.location.href)) {
+      let email = localStorage.getItem(EMAIL_KEY);
+      if (!email) {
+        email = window.prompt('Please enter your email to confirm sign-in:');
+      }
+      if (email) {
+        signInWithEmailLink(auth, email, window.location.href)
+          .then(() => {
+            localStorage.removeItem(EMAIL_KEY);
+            window.history.replaceState(null, '', window.location.origin);
+          })
+          .catch((e) => {
+            this.set({ status: 'error', error: (e as Error).message });
+          });
+      }
     }
-    this.recaptchaVerifier = new RecaptchaVerifier(auth, buttonId, {
-      size: 'invisible',
-    });
+  }
+
+  /* ---------- social auth ---------- */
+  signInWithGoogle = async (): Promise<void> => {
+    if (!auth) throw new Error('Auth not initialized');
+    const provider = new GoogleAuthProvider();
+    await signInWithPopup(auth, provider);
   };
 
-  signInWithPhone = async (phoneNumber: string): Promise<void> => {
-    if (!auth || !this.recaptchaVerifier) {
-      throw new Error('Auth not initialized');
-    }
-    this.confirmationResult = await signInWithPhoneNumber(
-      auth,
-      phoneNumber,
-      this.recaptchaVerifier,
-    );
-  };
-
-  confirmPhoneCode = async (code: string): Promise<void> => {
-    if (!this.confirmationResult) {
-      throw new Error('No confirmation result — send the code first');
-    }
-    await this.confirmationResult.confirm(code);
+  signInWithApple = async (): Promise<void> => {
+    if (!auth) throw new Error('Auth not initialized');
+    const provider = new OAuthProvider('apple.com');
+    provider.addScope('email');
+    provider.addScope('name');
+    await signInWithPopup(auth, provider);
   };
 
   signOutAccount = async (): Promise<void> => {

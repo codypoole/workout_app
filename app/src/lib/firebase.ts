@@ -7,10 +7,13 @@ import {
 } from 'firebase/firestore';
 import {
   getAuth,
-  RecaptchaVerifier,
-  signInWithPhoneNumber,
+  GoogleAuthProvider,
+  OAuthProvider,
+  signInWithPopup,
+  sendSignInLinkToEmail,
+  isSignInWithEmailLink,
+  signInWithEmailLink,
   type Auth,
-  type ConfirmationResult,
 } from 'firebase/auth';
 import { getAnalytics, isSupported, type Analytics } from 'firebase/analytics';
 
@@ -49,5 +52,15 @@ if (firebaseEnabled) {
   }
 }
 
-export { app, db, auth, analytics, RecaptchaVerifier, signInWithPhoneNumber };
-export type { ConfirmationResult };
+export {
+  app,
+  db,
+  auth,
+  analytics,
+  GoogleAuthProvider,
+  OAuthProvider,
+  signInWithPopup,
+  sendSignInLinkToEmail,
+  isSignInWithEmailLink,
+  signInWithEmailLink,
+};

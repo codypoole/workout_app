@@ -135,9 +135,11 @@ export function SettingsSheet({ open, onClose, settings, onChange, onReset, acco
               <div className="row between">
                 <div style={{ minWidth: 0 }}>
                   <div className="title" style={{ fontSize: 14 }}>
-                    <Icon name="phone" size={14} />{' '}
-                    {account.phoneNumber || 'Signed in'}
+                    {account.displayName || account.email || 'Signed in'}
                   </div>
+                  {account.displayName && account.email && (
+                    <div className="label clamp1">{account.email}</div>
+                  )}
                 </div>
                 <span className="accent" style={{ flexShrink: 0 }}>
                   <Icon name="check" size={18} />

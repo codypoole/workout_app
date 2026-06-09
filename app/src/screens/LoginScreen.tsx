@@ -1,29 +1,21 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { Icon } from '@/components/Icon';
 import { store } from '@/data/useStore';
 
-type Step = 'phone' | 'code';
+type Step = 'options' | 'email-sent';
 
 export function LoginScreen() {
-  const [step, setStep] = useState<Step>('phone');
-  const [phone, setPhone] = useState('');
-  const [code, setCode] = useState('');
+  const [step, setStep] = useState<Step>('options');
+  const [email, setEmail] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const codeRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    store.setupRecaptcha('send-code-btn');
-  }, []);
-
-  async function sendCode() {
+  async function sendLink() {
     setError(null);
     setBusy(true);
     try {
-      const formatted = phone.startsWith('+') ? phone : `+1${phone.replace(/\D/g, '')}`;
-      await store.signInWithPhone(formatted);
-      setStep('code');
-      setTimeout(() => codeRef.current?.focus(), 80);
+      await store.sendEmailLink(email);
+      setStep('email-sent');
     } catch (e) {
       setError(humanError(e));
     } finally {
@@ -31,11 +23,12 @@ export function LoginScreen() {
     }
   }
 
-  async function verifyCode() {
+  async function socialSignIn(method: 'google' | 'apple') {
     setError(null);
     setBusy(true);
     try {
-      await store.confirmPhoneCode(code);
+      if (method === 'google') await store.signInWithGoogle();
+      else await store.signInWithApple();
     } catch (e) {
       setError(humanError(e));
       setBusy(false);
@@ -50,66 +43,69 @@ export function LoginScreen() {
         </span>
         <div className="h1" style={{ textAlign: 'center' }}>Workout</div>
 
-        {step === 'phone' && (
+        {step === 'options' && (
           <div className="col gap12" style={{ width: '100%', marginTop: 8 }}>
-            <label className="label">Phone number</label>
-            <div className="row gap8">
-              <span className="login-prefix mono">+1</span>
-              <input
-                className="field grow"
-                type="tel"
-                inputMode="tel"
-                placeholder="(555) 123-4567"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && !busy && sendCode()}
-                autoFocus
-              />
-            </div>
             <button
-              id="send-code-btn"
-              className="btn primary block lg"
-              disabled={busy || phone.replace(/\D/g, '').length < 10}
-              onClick={sendCode}
+              className="btn block lg login-social"
+              disabled={busy}
+              onClick={() => socialSignIn('google')}
             >
-              {busy ? 'Sending…' : 'Send Code'}
+              <Icon name="google" size={18} /> Continue with Google
+            </button>
+            <button
+              className="btn block lg login-social"
+              disabled={busy}
+              onClick={() => socialSignIn('apple')}
+            >
+              <Icon name="apple" size={18} /> Continue with Apple
+            </button>
+
+            <div className="login-divider row center">
+              <span className="divide grow" />
+              <span className="label" style={{ padding: '0 12px', fontSize: 11 }}>OR</span>
+              <span className="divide grow" />
+            </div>
+
+            <label className="label">Email (passwordless)</label>
+            <input
+              className="field"
+              type="email"
+              inputMode="email"
+              placeholder="you@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && !busy && email.includes('@') && sendLink()}
+              autoFocus
+            />
+            <button
+              className="btn primary block lg"
+              disabled={busy || !email.includes('@')}
+              onClick={sendLink}
+            >
+              <Icon name="mail" size={18} />
+              {busy ? 'Sending...' : 'Send Sign-In Link'}
             </button>
           </div>
         )}
 
-        {step === 'code' && (
-          <div className="col gap12" style={{ width: '100%', marginTop: 8 }}>
-            <label className="label">Enter the 6-digit code sent to your phone</label>
-            <input
-              ref={codeRef}
-              className="field mono"
-              type="text"
-              inputMode="numeric"
-              maxLength={6}
-              placeholder="000000"
-              value={code}
-              onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
-              onKeyDown={(e) => e.key === 'Enter' && !busy && code.length === 6 && verifyCode()}
-              style={{ textAlign: 'center', fontSize: 24, letterSpacing: '0.3em' }}
-            />
-            <button
-              className="btn primary block lg"
-              disabled={busy || code.length !== 6}
-              onClick={verifyCode}
-            >
-              {busy ? 'Verifying…' : 'Verify'}
-            </button>
+        {step === 'email-sent' && (
+          <div className="col gap12 center" style={{ width: '100%', marginTop: 8, textAlign: 'center' }}>
+            <span className="accent">
+              <Icon name="mail" size={32} />
+            </span>
+            <div className="title">Check your email</div>
+            <div className="label" style={{ lineHeight: 1.5 }}>
+              We sent a sign-in link to <strong style={{ color: 'var(--text)' }}>{email}</strong>.
+              <br />Tap the link in the email to sign in.
+            </div>
             <button
               className="btn ghost block"
-              disabled={busy}
               onClick={() => {
-                setStep('phone');
-                setCode('');
+                setStep('options');
                 setError(null);
-                store.setupRecaptcha('send-code-btn');
               }}
             >
-              <Icon name="back" size={16} /> Change number
+              <Icon name="back" size={16} /> Back
             </button>
           </div>
         )}
@@ -127,16 +123,18 @@ export function LoginScreen() {
 function humanError(e: unknown): string {
   const code = (e as { code?: string }).code;
   switch (code) {
-    case 'auth/invalid-phone-number':
-      return 'Invalid phone number. Include country code if outside the US.';
+    case 'auth/invalid-email':
+      return 'Please enter a valid email address.';
     case 'auth/too-many-requests':
       return 'Too many attempts. Please wait a moment and try again.';
-    case 'auth/invalid-verification-code':
-      return 'Incorrect code. Please try again.';
-    case 'auth/code-expired':
-      return 'Code expired. Tap "Change number" to resend.';
-    case 'auth/missing-phone-number':
-      return 'Please enter a phone number.';
+    case 'auth/popup-closed-by-user':
+      return 'Sign-in cancelled.';
+    case 'auth/popup-blocked':
+      return 'Pop-up blocked by browser. Please allow pop-ups and try again.';
+    case 'auth/account-exists-with-different-credential':
+      return 'An account already exists with this email using a different sign-in method.';
+    case 'auth/operation-not-allowed':
+      return 'This sign-in method is not enabled. Enable it in Firebase Console.';
     default:
       return (e as Error).message || 'Something went wrong.';
   }
