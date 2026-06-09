@@ -62,20 +62,20 @@ export default function App() {
       </div>
     );
   }
-  if (status === ‘error’) {
+  if (status === 'error') {
     return (
       <div className="app" id="app-root" data-theme={settings.theme} data-type={settings.type}>
-        <div className="col center" style={{ position: ‘absolute’, inset: 0, gap: 12, padding: 32, textAlign: ‘center’ }}>
-          <span style={{ color: ‘var(--danger)’ }}>
+        <div className="col center" style={{ position: 'absolute', inset: 0, gap: 12, padding: 32, textAlign: 'center' }}>
+          <span style={{ color: 'var(--danger)' }}>
             <Icon name="info" size={36} />
           </span>
-          <div className="h2">Couldn’t connect</div>
+          <div className="h2">Couldn't connect</div>
           <div className="label" style={{ maxWidth: 300 }}>{error}</div>
         </div>
       </div>
     );
   }
-  if (status === ‘unauthenticated’) {
+  if (status === 'unauthenticated') {
     return (
       <div className="app" id="app-root" data-theme={settings.theme} data-type={settings.type}>
         <LoginScreen />
