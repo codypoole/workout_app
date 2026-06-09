@@ -109,6 +109,7 @@ export interface AppState {
   plan: Plan;
   plans?: Plan[];          // all saved plans (including the active one)
   activePlanId?: string;   // id of the currently active plan
+  favorites?: string[];    // exercise IDs tracked in progress
   history: HistoryMap;
   logs: LogMap;
   completedDays: Record<string, string>; // dayId -> ISO date

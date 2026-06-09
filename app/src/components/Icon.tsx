@@ -33,7 +33,9 @@ export type IconName =
   | 'google'
   | 'apple'
   | 'mail'
-  | 'logout';
+  | 'logout'
+  | 'star'
+  | 'star-filled';
 
 const PATHS: Record<IconName, JSX.Element> = {
   today: (
@@ -135,6 +137,8 @@ const PATHS: Record<IconName, JSX.Element> = {
     </>
   ),
   logout: <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" />,
+  star: <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />,
+  'star-filled': <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />,
 };
 
 interface IconProps {
@@ -144,6 +148,13 @@ interface IconProps {
 }
 
 export function Icon({ name, size = 22, stroke = 2 }: IconProps) {
+  if (name === 'star-filled') {
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth={1} strokeLinecap="round" strokeLinejoin="round">
+        {PATHS[name]}
+      </svg>
+    );
+  }
   if (name === 'google' || name === 'apple') {
     return (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">

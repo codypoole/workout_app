@@ -150,7 +150,7 @@ body {
   scrollbar-width: none;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
-  padding-bottom: calc(80px + env(safe-area-inset-bottom));
+  padding-bottom: calc(70px + env(safe-area-inset-bottom));
 }
 .scroll::-webkit-scrollbar {
   display: none;
@@ -410,7 +410,7 @@ textarea.field {
   grid-auto-flow: column;
   grid-auto-columns: 1fr;
   align-items: center;
-  padding: 8px 10px calc(4px + env(safe-area-inset-bottom));
+  padding: 6px 10px env(safe-area-inset-bottom, 0px);
   background: color-mix(in oklch, var(--bg) 82%, transparent);
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);

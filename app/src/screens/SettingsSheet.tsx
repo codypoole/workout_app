@@ -60,12 +60,11 @@ export interface SettingsSheetProps {
   onClose: () => void;
   settings: Settings;
   onChange: <K extends keyof Settings>(key: K, value: Settings[K]) => void;
-  onReset: () => void;
   account: AccountInfo;
   onSignOut: () => Promise<void>;
 }
 
-export function SettingsSheet({ open, onClose, settings, onChange, onReset, account, onSignOut }: SettingsSheetProps) {
+export function SettingsSheet({ open, onClose, settings, onChange, account, onSignOut }: SettingsSheetProps) {
   const [busy, setBusy] = useState(false);
   const [authMsg, setAuthMsg] = useState<string | null>(null);
 
@@ -155,16 +154,6 @@ export function SettingsSheet({ open, onClose, settings, onChange, onReset, acco
           )}
         </div>
 
-        <div className="divide" />
-        <Section label="Data" />
-        <button
-          className="btn danger block"
-          onClick={() => {
-            if (confirm('Reset to demo data? This replaces your current library, plan, logs, and history.')) onReset();
-          }}
-        >
-          <Icon name="trash" size={16} /> Reset demo data
-        </button>
         <div style={{ height: 12 }} />
       </div>
     </Sheet>

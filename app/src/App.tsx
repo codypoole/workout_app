@@ -260,16 +260,16 @@ export default function App() {
     });
   }
 
-  function changeSetting<K extends keyof Settings>(key: K, value: Settings[K]) {
-    store.update((st) => ({ ...st, settings: { ...st.settings, [key]: value } }));
+  function toggleFavorite(exerciseId: string) {
+    store.update((st) => {
+      const favs = st.favorites || [];
+      const isFav = favs.includes(exerciseId);
+      return { ...st, favorites: isFav ? favs.filter((id) => id !== exerciseId) : [...favs, exerciseId] };
+    });
   }
 
-  function resetDemo() {
-    store.reset();
-    setActive({ week: 0, day: 0 });
-    setFocusIdx(0);
-    setTab('today');
-    setSettingsOpen(false);
+  function changeSetting<K extends keyof Settings>(key: K, value: Settings[K]) {
+    store.update((st) => ({ ...st, settings: { ...st.settings, [key]: value } }));
   }
 
   return (
@@ -316,7 +316,7 @@ export default function App() {
             <LibraryScreen state={s} onSave={saveExercise} onDelete={deleteExercise} onOpenExercise={(id) => setDetailId(id)} />
           )}
           {tab === 'progress' && (
-            <ProgressScreen state={s} unit={unit} onOpenExercise={(id) => setDetailId(id)} onOpenSettings={() => setSettingsOpen(true)} />
+            <ProgressScreen state={s} unit={unit} onOpenExercise={(id) => setDetailId(id)} onOpenSettings={() => setSettingsOpen(true)} onToggleFavorite={toggleFavorite} />
           )}
         </div>
       </div>
@@ -346,6 +346,7 @@ export default function App() {
             setDetailId(null);
             setTab('library');
           }}
+          onToggleFavorite={toggleFavorite}
         />
       )}
 
@@ -354,7 +355,6 @@ export default function App() {
         onClose={() => setSettingsOpen(false)}
         settings={settings}
         onChange={changeSetting}
-        onReset={resetDemo}
         account={account}
         onSignOut={store.signOutAccount}
       />

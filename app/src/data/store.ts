@@ -55,6 +55,7 @@ function coerceState(data: Partial<AppState> | null | undefined): AppState {
     plan,
     plans,
     activePlanId: data.activePlanId || plan.id,
+    favorites: Array.isArray(data.favorites) ? data.favorites : [],
     history: data.history || {},
     logs: data.logs || {},
     completedDays: data.completedDays || {},
