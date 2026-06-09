@@ -222,7 +222,7 @@ export class Store {
   sendEmailLink = async (email: string): Promise<void> => {
     if (!auth) throw new Error('Auth not initialized');
     const actionCodeSettings = {
-      url: window.location.origin,
+      url: window.location.href.split('?')[0],
       handleCodeInApp: true,
     };
     await sendSignInLinkToEmail(auth, email, actionCodeSettings);
