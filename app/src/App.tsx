@@ -220,11 +220,44 @@ export default function App() {
   }
 
   function importPlan(plan: Plan) {
-    store.update((st) => ({ ...st, plan, logs: {}, completedDays: {} }));
+    store.update((st) => {
+      const existingPlans = st.plans || [st.plan];
+      // Replace if a plan with same id exists, otherwise add
+      const exists = existingPlans.some((p) => p.id === plan.id);
+      const plans = exists
+        ? existingPlans.map((p) => (p.id === plan.id ? plan : p))
+        : [...existingPlans, plan];
+      return { ...st, plan, plans, activePlanId: plan.id, logs: {}, completedDays: {} };
+    });
     const firstNonRest = plan.weeks[0].days.findIndex((d) => !d.rest);
     setActive({ week: 0, day: firstNonRest === -1 ? 0 : firstNonRest });
     setFocusIdx(0);
     setTab('today');
+  }
+
+  function activatePlan(planId: string) {
+    store.update((st) => {
+      const plans = st.plans || [st.plan];
+      const target = plans.find((p) => p.id === planId);
+      if (!target) return st;
+      return { ...st, plan: target, activePlanId: planId, logs: {}, completedDays: {} };
+    });
+    setActive({ week: 0, day: 0 });
+    setFocusIdx(0);
+    setTab('today');
+  }
+
+  function deletePlan(planId: string) {
+    store.update((st) => {
+      const plans = (st.plans || [st.plan]).filter((p) => p.id !== planId);
+      if (plans.length === 0) return st; // don't delete the last plan
+      // If deleting the active plan, switch to the first remaining one
+      const isActive = st.activePlanId === planId || st.plan.id === planId;
+      if (isActive) {
+        return { ...st, plan: plans[0], plans, activePlanId: plans[0].id, logs: {}, completedDays: {} };
+      }
+      return { ...st, plans };
+    });
   }
 
   function changeSetting<K extends keyof Settings>(key: K, value: Settings[K]) {
@@ -275,6 +308,8 @@ export default function App() {
                 setTab('today');
               }}
               onImport={importPlan}
+              onActivatePlan={activatePlan}
+              onDeletePlan={deletePlan}
             />
           )}
           {tab === 'library' && (

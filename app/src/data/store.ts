@@ -48,9 +48,13 @@ const DEFAULT_SETTINGS: Settings = {
 function coerceState(data: Partial<AppState> | null | undefined): AppState {
   const base = freshState();
   if (!data) return base;
+  const plan = data.plan && data.plan.weeks ? data.plan : base.plan;
+  const plans = Array.isArray(data.plans) && data.plans.length ? data.plans : [plan];
   return {
     library: Array.isArray(data.library) && data.library.length ? data.library : base.library,
-    plan: data.plan && data.plan.weeks ? data.plan : base.plan,
+    plan,
+    plans,
+    activePlanId: data.activePlanId || plan.id,
     history: data.history || {},
     logs: data.logs || {},
     completedDays: data.completedDays || {},
@@ -108,7 +112,14 @@ export class Store {
   update = (fn: (s: AppState) => AppState): void => {
     const cur = this.snapshot.state;
     if (!cur) return;
-    const next = fn(cur);
+    let next = fn(cur);
+    // Keep the active plan in sync within the plans array
+    if (next.plans && next.activePlanId) {
+      next = {
+        ...next,
+        plans: next.plans.map((p) => (p.id === next.activePlanId ? next.plan : p)),
+      };
+    }
     this.set({ state: next });
     this.persist(next);
   };

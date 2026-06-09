@@ -6,6 +6,8 @@ const GROUP_HUES: Record<string, number> = {
   Shoulders: 48,
   Arms: 280,
   Core: 330,
+  'Full Body': 100,
+  Cardio: 25,
 };
 
 export function groupColor(g: string | undefined): string {

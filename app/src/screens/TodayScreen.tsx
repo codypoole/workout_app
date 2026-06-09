@@ -9,6 +9,7 @@ import { Icon } from '@/components/Icon';
 import { Ring } from '@/components/Ring';
 import { Stepper } from '@/components/Stepper';
 import { GroupDot } from '@/components/GroupDot';
+import { ConfirmModal } from '@/components/ConfirmModal';
 
 type ExMap = Record<string, Exercise>;
 type LogFn = (dayId: string, ei: number, si: number, payload: LoggedSet | null, restSec?: number) => void;
@@ -260,16 +261,16 @@ function FocusExercise({
   const done = exDone(state, day.id, ei, item);
   return (
     <div className="col grow" style={{ padding: '0 16px 16px' }}>
-      <div className="row between" style={{ marginBottom: 14 }}>
-        <button className="icon-btn" disabled={ei === 0} onClick={onPrev} aria-label="Previous exercise">
+      <div className="row" style={{ marginBottom: 14, gap: 8 }}>
+        <button className="icon-btn" style={{ flexShrink: 0 }} disabled={ei === 0} onClick={onPrev} aria-label="Previous exercise">
           <Icon name="back" size={18} />
         </button>
-        <div className="row gap6">
+        <div className="row" style={{ flex: 1, gap: 4, justifyContent: 'center' }}>
           {day.exercises.map((_, i) => (
             <span
               key={i}
               style={{
-                width: i === ei ? 20 : 6,
+                flex: i === ei ? 3 : 1,
                 height: 6,
                 borderRadius: 99,
                 background:
@@ -279,11 +280,12 @@ function FocusExercise({
                     ? 'color-mix(in oklch,var(--accent) 45%,transparent)'
                     : 'var(--surface-3)',
                 transition: 'all .2s',
+                minWidth: 0,
               }}
             />
           ))}
         </div>
-        <button className="icon-btn" disabled={ei === total - 1} onClick={onNext} aria-label="Next exercise">
+        <button className="icon-btn" style={{ flexShrink: 0 }} disabled={ei === total - 1} onClick={onNext} aria-label="Next exercise">
           <Icon name="chevron" size={18} />
         </button>
       </div>
@@ -342,8 +344,19 @@ function DayOverview({
   onPick: (ei: number) => void; onSwap: (ei: number) => void;
   onDelete: (ei: number) => void; onAdd: () => void;
 }) {
+  const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
+  const pendingEx = confirmDelete !== null ? exMap[day.exercises[confirmDelete]?.exerciseId] : null;
+
   return (
     <div className="col gap10" style={{ padding: '0 16px 20px' }}>
+      <ConfirmModal
+        open={confirmDelete !== null}
+        title="Remove exercise?"
+        message={pendingEx ? `"${pendingEx.name}" will be removed from this day along with any logged sets.` : 'This exercise will be removed.'}
+        confirmLabel="Remove"
+        onConfirm={() => { if (confirmDelete !== null) { onDelete(confirmDelete); setConfirmDelete(null); } }}
+        onCancel={() => setConfirmDelete(null)}
+      />
       {day.exercises.map((item, ei) => {
         const meta = exMap[item.exerciseId] || ({} as Exercise);
         const done = exDone(state, day.id, ei, item);
@@ -386,7 +399,7 @@ function DayOverview({
                 <button className="icon-btn" style={{ width: 34, height: 34 }} title="Swap" onClick={() => onSwap(ei)} aria-label="Swap exercise">
                   <Icon name="swap" size={15} />
                 </button>
-                <button className="icon-btn" style={{ width: 34, height: 34, color: 'var(--danger)' }} title="Remove" onClick={() => onDelete(ei)} aria-label="Remove exercise">
+                <button className="icon-btn" style={{ width: 34, height: 34, color: 'var(--danger)' }} title="Remove" onClick={() => setConfirmDelete(ei)} aria-label="Remove exercise">
                   <Icon name="trash" size={15} />
                 </button>
               </div>

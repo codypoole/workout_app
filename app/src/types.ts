@@ -11,7 +11,9 @@ export type MuscleGroup =
   | 'Legs'
   | 'Shoulders'
   | 'Arms'
-  | 'Core';
+  | 'Core'
+  | 'Full Body'
+  | 'Cardio';
 
 export interface Exercise {
   id: string;
@@ -105,6 +107,8 @@ export interface Settings {
 export interface AppState {
   library: Exercise[];
   plan: Plan;
+  plans?: Plan[];          // all saved plans (including the active one)
+  activePlanId?: string;   // id of the currently active plan
   history: HistoryMap;
   logs: LogMap;
   completedDays: Record<string, string>; // dayId -> ISO date

@@ -1,4 +1,4 @@
-/* ============ PLAN — weeks/days + JSON import ============ */
+/* ============ PLAN — weeks/days + JSON import + multi-plan management ============ */
 import { useMemo, useState } from 'react';
 import type { AppState, Exercise, Plan } from '@/types';
 import { buildClaudePrompt, makeSamplePlan } from '@/lib/seed';
@@ -6,6 +6,7 @@ import { normalizePlan, stripPlan, validatePlanJson, type ValidationResult } fro
 import { Icon } from '@/components/Icon';
 import { Sheet } from '@/components/Sheet';
 import { GroupDot } from '@/components/GroupDot';
+import { ConfirmModal } from '@/components/ConfirmModal';
 
 type ExMap = Record<string, Exercise>;
 
@@ -15,34 +16,51 @@ export interface PlanScreenProps {
   activeRef: { week: number; day: number };
   onSetActive: (week: number, day: number) => void;
   onImport: (plan: Plan) => void;
+  onActivatePlan: (planId: string) => void;
+  onDeletePlan: (planId: string) => void;
 }
 
-export function PlanScreen({ state, exMap, activeRef, onSetActive, onImport }: PlanScreenProps) {
+export function PlanScreen({ state, exMap, activeRef, onSetActive, onImport, onActivatePlan, onDeletePlan }: PlanScreenProps) {
   const plan = state.plan;
+  const plans = state.plans || [plan];
   const [wk, setWk] = useState(activeRef ? activeRef.week : 0);
   const [showImport, setShowImport] = useState(false);
+  const [showPlans, setShowPlans] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const week = plan.weeks[wk];
+  const pendingPlan = confirmDelete ? plans.find((p) => p.id === confirmDelete) : null;
 
   return (
     <div className="screen screen-enter">
       <div style={{ padding: '8px 16px 10px' }}>
         <div className="row between">
-          <div>
+          <div style={{ flex: 1, minWidth: 0 }}>
             <div className="eyebrow">Active plan</div>
             <div className="h1" style={{ maxWidth: 240 }}>{plan.name}</div>
           </div>
-          <button
-            className="icon-btn"
-            style={{ width: 44, height: 44, borderColor: 'var(--accent)', color: 'var(--accent)' }}
-            onClick={() => setShowImport(true)}
-            aria-label="Import plan"
-          >
-            <Icon name="upload" size={20} />
-          </button>
+          <div className="row gap8">
+            <button
+              className="icon-btn"
+              style={{ width: 44, height: 44, borderColor: 'var(--line-2)' }}
+              onClick={() => setShowPlans(true)}
+              aria-label="Manage plans"
+            >
+              <Icon name="plan" size={20} />
+            </button>
+            <button
+              className="icon-btn"
+              style={{ width: 44, height: 44, borderColor: 'var(--accent)', color: 'var(--accent)' }}
+              onClick={() => setShowImport(true)}
+              aria-label="Import plan"
+            >
+              <Icon name="upload" size={20} />
+            </button>
+          </div>
         </div>
         <div className="row gap8 wrap" style={{ marginTop: 10 }}>
           <span className="chip accent">{plan.goal}</span>
           <span className="chip">{plan.weeks.length} of {plan.weeksCount} weeks built</span>
+          {plans.length > 1 && <span className="chip">{plans.length} plans saved</span>}
         </div>
       </div>
 
@@ -108,6 +126,72 @@ export function PlanScreen({ state, exMap, activeRef, onSetActive, onImport }: P
       <Sheet open={showImport} onClose={() => setShowImport(false)} title="Import plan" full>
         <ImportFlow library={state.library} onImport={(p) => { onImport(p); setShowImport(false); }} />
       </Sheet>
+
+      <Sheet open={showPlans} onClose={() => setShowPlans(false)} title="My Plans" full>
+        <div className="col gap10" style={{ paddingTop: 6 }}>
+          {plans.map((p) => {
+            const isActivePlan = p.id === (state.activePlanId || plan.id);
+            const totalDays = p.weeks.reduce((sum, w) => sum + w.days.length, 0);
+            const totalExercises = p.weeks.reduce((sum, w) => sum + w.days.reduce((s, d) => s + d.exercises.length, 0), 0);
+            return (
+              <div
+                key={p.id}
+                className="card"
+                style={{
+                  padding: 14,
+                  borderColor: isActivePlan ? 'var(--accent)' : 'var(--line)',
+                }}
+              >
+                <div className="row between" style={{ marginBottom: 6 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div className="row gap8">
+                      <span className="title clamp1" style={{ fontSize: 15 }}>{p.name}</span>
+                      {isActivePlan && <span className="chip accent" style={{ padding: '2px 7px', fontSize: 10 }}>Active</span>}
+                    </div>
+                    <div className="label" style={{ marginTop: 2 }}>
+                      {p.goal} · {p.weeks.length} weeks · {totalDays} days · {totalExercises} exercises
+                    </div>
+                  </div>
+                </div>
+                <div className="row gap8" style={{ marginTop: 8 }}>
+                  {!isActivePlan && (
+                    <button
+                      className="btn primary grow"
+                      style={{ height: 38, fontSize: 13 }}
+                      onClick={() => { onActivatePlan(p.id); setShowPlans(false); }}
+                    >
+                      <Icon name="check" size={16} /> Activate
+                    </button>
+                  )}
+                  {plans.length > 1 && (
+                    <button
+                      className="btn ghost"
+                      style={{ height: 38, fontSize: 13, color: 'var(--danger)', borderColor: 'color-mix(in oklch, var(--danger) 30%, transparent)' }}
+                      onClick={() => setConfirmDelete(p.id)}
+                    >
+                      <Icon name="trash" size={15} />
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </Sheet>
+
+      <ConfirmModal
+        open={confirmDelete !== null}
+        title="Delete plan?"
+        message={pendingPlan ? `"${pendingPlan.name}" will be permanently deleted. This cannot be undone.` : 'This plan will be deleted.'}
+        confirmLabel="Delete"
+        onConfirm={() => {
+          if (confirmDelete) {
+            onDeletePlan(confirmDelete);
+            setConfirmDelete(null);
+          }
+        }}
+        onCancel={() => setConfirmDelete(null)}
+      />
     </div>
   );
 }
