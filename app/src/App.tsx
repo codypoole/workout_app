@@ -49,7 +49,14 @@ export default function App() {
 
   const exMap = useMemo(() => (state ? buildExMap(state.library) : {}), [state]);
 
-  // ---- loading / error gates ----
+  // ---- auth / loading / error gates ----
+  if (status === 'unauthenticated') {
+    return (
+      <div className="app" id="app-root" data-theme={settings.theme} data-type={settings.type}>
+        <LoginScreen />
+      </div>
+    );
+  }
   if (status === 'loading' || !state) {
     return (
       <div className="app" id="app-root" data-theme={settings.theme} data-type={settings.type}>
@@ -75,14 +82,6 @@ export default function App() {
       </div>
     );
   }
-  if (status === 'unauthenticated') {
-    return (
-      <div className="app" id="app-root" data-theme={settings.theme} data-type={settings.type}>
-        <LoginScreen />
-      </div>
-    );
-  }
-
   const s: AppState = state;
   const activeWeek = s.plan.weeks[active.week];
   const activeDay = activeWeek && activeWeek.days[active.day];

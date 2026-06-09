@@ -144,7 +144,11 @@ export class Store {
         this.docUnsub = null;
       }
 
-      if (!user) {
+      if (!user || user.isAnonymous) {
+        if (user?.isAnonymous) {
+          signOut(auth!).catch(() => {});
+          return;
+        }
         this.set({
           status: 'unauthenticated',
           state: null,
