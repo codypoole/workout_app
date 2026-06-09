@@ -1,0 +1,343 @@
+/* ============ TODAY — workout runner ============ */
+
+function getLog(state, dayId, ei, si) {
+  return ((state.logs[dayId] || {})[ei] || {})[si] || null;
+}
+function exDone(state, dayId, ei, ex) {
+  const sets = ex.sets || [];
+  if (!sets.length) return false;
+  return sets.every((_, si) => { const l = getLog(state, dayId, ei, si); return l && l.done; });
+}
+function dayProgress(state, dayId, day) {
+  let total = 0, done = 0;
+  day.exercises.forEach((ex, ei) => ex.sets.forEach((_, si) => {
+    total++; const l = getLog(state, dayId, ei, si); if (l && l.done) done++;
+  }));
+  return { total, done, ratio: total ? done / total : 0 };
+}
+
+/* ---- Rest timer bar ---- */
+function RestTimer({ secs, onDone, onClose }) {
+  const [left, setLeft] = useState(secs);
+  const [paused, setPaused] = useState(false);
+  const total = useRef(secs);
+  useEffect(() => { setLeft(secs); total.current = secs; setPaused(false); }, [secs]);
+  useEffect(() => {
+    if (paused) return;
+    if (left <= 0) { onDone && onDone(); return; }
+    const t = setTimeout(() => setLeft(l => l - 1), 1000);
+    return () => clearTimeout(t);
+  }, [left, paused]);
+  const ratio = total.current ? left / total.current : 0;
+  return (
+    <div style={{ position:'absolute', left:12, right:12, bottom:96, zIndex:40,
+      background:'var(--surface)', border:'1px solid var(--line-2)', borderRadius:18,
+      padding:'12px 14px', boxShadow:'0 16px 40px -10px rgba(0,0,0,0.7)', animation:'pop .2s ease' }}>
+      <div className="row between" style={{ marginBottom:8 }}>
+        <div className="row gap8">
+          <span className="accent"><Icon name="timer" size={18}/></span>
+          <span className="eyebrow">Rest</span>
+        </div>
+        <div className="mono accent numbig" style={{ fontSize:22 }}>{fmtTime(Math.max(0,left))}</div>
+      </div>
+      <div className="bar" style={{ marginBottom:10 }}><i style={{ width: (ratio*100)+'%', transition:'width 1s linear' }} /></div>
+      <div className="row gap8">
+        <button className="btn ghost grow" style={{height:40,fontSize:13}} onClick={()=>setLeft(l=>l+15)}>+15s</button>
+        <button className="btn ghost" style={{height:40,width:48}} onClick={()=>setPaused(p=>!p)}>
+          <Icon name={paused?'play':'pause'} size={16}/>
+        </button>
+        <button className="btn primary grow" style={{height:40,fontSize:13}} onClick={onClose}>Skip rest</button>
+      </div>
+    </div>
+  );
+}
+
+/* ---- A single set row in focus mode ---- */
+function SetRow({ idx, set, ex, log, onLog, unit }) {
+  const isTimed = ex.type === 'timed';
+  const done = log && log.done;
+  const [weight, setWeight] = useState(log ? log.weight : set.weight || 0);
+  const [reps, setReps] = useState(log ? log.reps : set.reps || 0);
+  const [editing, setEditing] = useState(false);
+  const [holding, setHolding] = useState(false);
+  const [held, setHeld] = useState(0);
+  useEffect(() => {
+    if (!holding) return;
+    if (held >= (set.durationSec||0)) { onLog({ durationSec: set.durationSec, done:true }); setHolding(false); return; }
+    const t = setTimeout(()=>setHeld(h=>h+1), 1000); return ()=>clearTimeout(t);
+  }, [holding, held]);
+
+  if (isTimed) {
+    return (
+      <div className="card-2" style={{ padding:14, borderColor: done?'var(--accent)':'var(--line)' }}>
+        <div className="row between">
+          <div className="row gap10">
+            <div className="mono faint" style={{width:18}}>{idx+1}</div>
+            <div>
+              <div className="title">{holding ? fmtTime(set.durationSec - held) : fmtTime(set.durationSec)}</div>
+              <div className="label">Hold · {set.restSec}s rest</div>
+            </div>
+          </div>
+          {done ? <span className="chip accent"><Icon name="check" size={12}/> Done</span>
+            : holding ? <button className="btn ghost" style={{height:38}} onClick={()=>{setHolding(false);setHeld(0);}}>Stop</button>
+            : <button className="btn primary" style={{height:38}} onClick={()=>{setHeld(0);setHolding(true);}}>Start</button>}
+        </div>
+      </div>
+    );
+  }
+
+  // Expanded editor — stacked steppers + explicit Log button (fits phone width)
+  if (editing && !done) {
+    return (
+      <div className="card-2" style={{ padding:'12px 14px', borderColor:'var(--accent)' }}>
+        <div className="row between" style={{ marginBottom:10 }}>
+          <span className="eyebrow">Set {idx+1}</span>
+          <button className="btn ghost" style={{ height:30, fontSize:12, padding:'0 10px' }}
+            onClick={()=>{ setWeight(log?log.weight:set.weight||0); setReps(log?log.reps:set.reps||0); setEditing(false); }}>Cancel</button>
+        </div>
+        <div className="row between" style={{ marginBottom:8 }}>
+          <span className="label">Weight</span>
+          <Stepper value={weight} onChange={setWeight} step={5} suffix={unit} />
+        </div>
+        <div className="row between">
+          <span className="label">Reps</span>
+          <Stepper value={reps} onChange={setReps} step={1} />
+        </div>
+        <div className="row between" style={{ margin:'12px 2px 12px' }}>
+          <span className="label">Est. 1RM</span>
+          <span className="mono accent" style={{ fontSize:15, fontWeight:650 }}>~{DB.epley1RM(weight,reps)} {unit}</span>
+        </div>
+        <button className="btn primary block" style={{ height:46 }}
+          onClick={()=>{ setEditing(false); onLog({ weight, reps, done:true }); }}>
+          <Icon name="check" size={18}/> Log set
+        </button>
+      </div>
+    );
+  }
+
+  // Collapsed row — tap the numbers to edit, tap check to log as-is / undo
+  return (
+    <div className="card-2" style={{ padding:'10px 12px', borderColor: done?'color-mix(in oklch,var(--accent) 50%,var(--line))':'var(--line)',
+      background: done?'color-mix(in oklch,var(--accent) 7%,var(--surface-2))':'var(--surface-2)' }}>
+      <div className="row between gap10">
+        <button onClick={()=>!done && setEditing(true)}
+          style={{ background:'none', border:'none', cursor: done?'default':'pointer', textAlign:'left', flex:1, minWidth:0, padding:0, color:'inherit' }}>
+          <div className="row gap8">
+            <span className="mono faint" style={{ width:16, fontSize:13, flexShrink:0 }}>{idx+1}</span>
+            <span className="mono" style={{ fontSize:18, fontWeight:650 }}>{weight}<span className="faint" style={{fontSize:12}}> {unit}</span></span>
+            <span className="faint">×</span>
+            <span className="mono" style={{ fontSize:18, fontWeight:650 }}>{reps}</span>
+            {!done && <span className="faint row gap4" style={{ fontSize:11, marginLeft:'auto', paddingRight:4 }}><Icon name="edit" size={13}/> edit</span>}
+          </div>
+        </button>
+        {done ? (
+          <button className="icon-btn" style={{ background:'var(--accent)', color:'var(--accent-ink)', border:'none', flexShrink:0 }}
+            onClick={()=>onLog(null)}><Icon name="check" size={18}/></button>
+        ) : (
+          <button className="icon-btn" style={{ borderColor:'var(--accent)', color:'var(--accent)', flexShrink:0 }}
+            onClick={()=>{ setEditing(false); onLog({ weight, reps, done:true }); }}>
+            <Icon name="check" size={18}/>
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ---- Focus view: one exercise ---- */
+function FocusExercise({ state, day, ei, exMap, onLog, onSwap, onOpen, onPrev, onNext, unit }) {
+  const item = day.exercises[ei];
+  const meta = exMap[item.exerciseId] || { name:item.exerciseId, group:'', equipment:'', type:'weight' };
+  const total = day.exercises.length;
+  const done = exDone(state, day.id, ei, item);
+  return (
+    <div className="col grow" style={{ padding:'0 16px 16px' }}>
+      {/* nav header */}
+      <div className="row between" style={{ marginBottom:14 }}>
+        <button className="icon-btn" disabled={ei===0} onClick={onPrev}><Icon name="back" size={18}/></button>
+        <div className="row gap6">
+          {day.exercises.map((_,i)=>(
+            <span key={i} style={{ width:i===ei?20:6, height:6, borderRadius:99,
+              background: i===ei?'var(--accent)': exDone(state,day.id,i,day.exercises[i])?'color-mix(in oklch,var(--accent) 45%,transparent)':'var(--surface-3)',
+              transition:'all .2s' }} />
+          ))}
+        </div>
+        <button className="icon-btn" disabled={ei===total-1} onClick={onNext}><Icon name="chevron" size={18}/></button>
+      </div>
+
+      <div className="row between" style={{ marginBottom:4 }}>
+        <span className="eyebrow">Exercise {ei+1} / {total}</span>
+        {done && <span className="chip accent"><Icon name="check" size={12}/> Complete</span>}
+      </div>
+      <div className="row gap8" style={{ marginBottom:9 }}>
+        <GroupDot group={meta.group} size={9} />
+        <span className="label">{meta.group} · {meta.equipment}</span>
+      </div>
+      <div className="h1" style={{ marginBottom:14, lineHeight:1.05 }}>{meta.name}</div>
+
+      <div className="row gap8" style={{ marginBottom:16 }}>
+        <button className="btn ghost grow" style={{height:42,fontSize:13}} onClick={onSwap}><Icon name="swap" size={16}/> Swap</button>
+        <button className="btn ghost grow" style={{height:42,fontSize:13}} onClick={()=>onOpen(item.exerciseId)}><Icon name="progress" size={16}/> History</button>
+      </div>
+
+      <div className="col gap8">
+        {item.sets.map((set, si) => (
+          <SetRow key={si} idx={si} set={set} ex={meta} unit={unit}
+            log={getLog(state, day.id, ei, si)}
+            onLog={(payload)=>onLog(day.id, ei, si, payload, set.restSec)} />
+        ))}
+      </div>
+
+      {done && ei < total-1 && (
+        <button className="btn primary block lg" style={{ marginTop:18 }} onClick={onNext}>
+          Next exercise <Icon name="chevron" size={18}/>
+        </button>
+      )}
+    </div>
+  );
+}
+
+/* ---- Day zoom-out view ---- */
+function DayOverview({ state, day, exMap, onPick, onSwap, onDelete, onAdd, unit }) {
+  return (
+    <div className="col gap10" style={{ padding:'0 16px 20px' }}>
+      {day.exercises.map((item, ei) => {
+        const meta = exMap[item.exerciseId] || {};
+        const done = exDone(state, day.id, ei, item);
+        const setsDone = item.sets.filter((_,si)=>{ const l=getLog(state,day.id,ei,si); return l&&l.done; }).length;
+        return (
+          <div key={ei} className="card" style={{ padding:14,
+            borderColor: done?'color-mix(in oklch,var(--accent) 40%,var(--line))':'var(--line)' }}>
+            <div className="row between gap10">
+              <button onClick={()=>onPick(ei)} style={{ background:'none', border:'none', cursor:'pointer', textAlign:'left', padding:0, color:'inherit', minWidth:0, flex:1 }}>
+                <div className="row gap10" style={{ minWidth:0 }}>
+                  <div style={{ width:34, height:34, borderRadius:10, background:'var(--surface-2)', flexShrink:0,
+                    display:'flex', alignItems:'center', justifyContent:'center',
+                    border: done?'1px solid var(--accent)':'1px solid var(--line)', color: done?'var(--accent)':'var(--text-dim)' }}>
+                    {done ? <Icon name="check" size={18}/> : <span className="mono" style={{fontSize:14}}>{ei+1}</span>}
+                  </div>
+                  <div style={{ minWidth:0, flex:1 }}>
+                    <div className="row gap6"><GroupDot group={meta.group} size={7}/><span className="title clamp1" style={{fontSize:15, flex:1}}>{meta.name}</span></div>
+                    <div className="label">{setsDone}/{item.sets.length} sets · {meta.equipment}</div>
+                  </div>
+                </div>
+              </button>
+              <div className="row gap6" style={{ flexShrink:0 }}>
+                <button className="icon-btn" style={{ width:34, height:34 }} title="Swap" onClick={()=>onSwap(ei)}><Icon name="swap" size={15}/></button>
+                <button className="icon-btn" style={{ width:34, height:34, color:'var(--danger)' }} title="Remove" onClick={()=>onDelete(ei)}><Icon name="trash" size={15}/></button>
+              </div>
+            </div>
+            <button onClick={()=>onPick(ei)} style={{ background:'none', border:'none', cursor:'pointer', textAlign:'left', padding:0, width:'100%' }}>
+              <div className="row gap6 wrap" style={{ marginTop:10, paddingLeft:44 }}>
+                {item.sets.map((s,si)=>{
+                  const l = getLog(state,day.id,ei,si);
+                  const dn = l&&l.done;
+                  return <span key={si} className="chip" style={dn?{background:'var(--accent-soft)',color:'var(--accent)',borderColor:'transparent'}:null}>
+                    {meta.type==='timed' ? fmtTime(s.durationSec) : `${(l&&dn?l.weight:s.weight)}×${(l&&dn?l.reps:s.reps)}`}
+                  </span>;
+                })}
+              </div>
+            </button>
+          </div>
+        );
+      })}
+      <button className="btn ghost block" style={{ height:50, borderStyle:'dashed', marginTop:2 }} onClick={onAdd}>
+        <Icon name="plus" size={18}/> Add exercise
+      </button>
+    </div>
+  );
+}
+
+function TodayScreen({ state, weekName, day, exMap, onLog, onCompleteDay, onUncompleteDay, onAdvance, onSwap, onAddExercise, onDeleteExercise, onOpenExercise, unit, restState, setRestState, focusIdx, setFocusIdx }) {
+  const [mode, setMode] = useState('focus');
+
+  if (!day) return <div className="center grow faint" style={{padding:40,textAlign:'center'}}>No active day. Build a plan to get started.</div>;
+
+  const prog = dayProgress(state, day.id, day);
+  const allDone = prog.total > 0 && prog.done === prog.total;
+  const completed = !!state.completedDays[day.id];
+
+  function handleLog(dayId, ei, si, payload, restSec) {
+    onLog(dayId, ei, si, payload);
+    if (payload && payload.done && restSec) setRestState({ secs: restSec, key: Date.now() });
+  }
+
+  return (
+    <div className="screen screen-enter">
+      <StatusBar />
+      <div style={{ padding:'8px 16px 12px' }}>
+        <div className="row between" style={{ marginBottom:12 }}>
+          <div>
+            <div className="eyebrow">{weekName} · {day.rest ? 'Recovery' : 'Today'}</div>
+            <div className="h1">{day.name}</div>
+            <div className="label" style={{marginTop:2}}>{day.focus}</div>
+          </div>
+          <Ring value={prog.ratio} size={58} stroke={6}>
+            <div className="col center">
+              <div className="mono" style={{ fontSize:14, fontWeight:700, lineHeight:1 }}>{prog.done}</div>
+              <div className="mono faint" style={{ fontSize:9 }}>/{prog.total}</div>
+            </div>
+          </Ring>
+        </div>
+        {!day.rest && (
+          <div className="pill-toggle">
+            <button className={mode==='focus'?'on':''} onClick={()=>setMode('focus')}>Focus</button>
+            <button className={mode==='day'?'on':''} onClick={()=>setMode('day')}>Full day</button>
+          </div>
+        )}
+      </div>
+
+      <div className="scroll">
+        {day.rest ? (
+          <div className="col center grow" style={{ padding:'40px 24px', textAlign:'center', gap:14 }}>
+            <div style={{ width:72,height:72,borderRadius:99,background:'var(--surface)',border:'1px solid var(--line)',display:'flex',alignItems:'center',justifyContent:'center' }} className="accent"><Icon name="flame" size={30}/></div>
+            <div className="h2">Recovery day</div>
+            <div className="dim" style={{maxWidth:240}}>Light mobility or full rest. Your next session is loaded and ready.</div>
+          </div>
+        ) : day.exercises.length === 0 ? (
+          <div className="col center grow" style={{ padding:'40px 24px', textAlign:'center', gap:14 }}>
+            <div className="faint">No exercises in this day yet.</div>
+            <button className="btn primary" onClick={onAddExercise}><Icon name="plus" size={18}/> Add exercise</button>
+          </div>
+        ) : mode === 'focus' ? (
+          <FocusExercise state={state} day={day} ei={Math.min(focusIdx, day.exercises.length-1)} exMap={exMap} unit={unit}
+            onLog={handleLog} onSwap={()=>onSwap(Math.min(focusIdx, day.exercises.length-1))} onOpen={onOpenExercise}
+            onPrev={()=>setFocusIdx(i=>Math.max(0,i-1))} onNext={()=>setFocusIdx(i=>Math.min(day.exercises.length-1,i+1))} />
+        ) : (
+          <DayOverview state={state} day={day} exMap={exMap} unit={unit}
+            onPick={(ei)=>{ setFocusIdx(ei); setMode('focus'); }}
+            onSwap={onSwap} onDelete={onDeleteExercise} onAdd={onAddExercise} />
+        )}
+
+        {mode==='day' && !day.rest && !completed && (
+          <div style={{ padding:'4px 16px 24px' }}>
+            <button className={'btn block lg ' + (allDone ? 'primary' : 'ghost')} onClick={()=>onCompleteDay(day.id)}>
+              <Icon name="check" size={20}/> {allDone ? 'Finish workout' : `Finish workout · ${prog.done}/${prog.total} sets`}
+            </button>
+            {!allDone && <div className="label center" style={{ textAlign:'center', marginTop:8 }}>You can finish early — only logged sets are saved.</div>}
+          </div>
+        )}
+        {mode==='day' && completed && (
+          <div style={{ padding:'4px 16px 24px' }}>
+            <div className="card" style={{ padding:18, textAlign:'center' }}>
+              <div className="accent" style={{display:'flex',justifyContent:'center',marginBottom:6}}><Icon name="trophy" size={28}/></div>
+              <div className="h2" style={{marginBottom:2}}>Workout complete</div>
+              <div className="label" style={{marginBottom:14}}>{prog.done}/{prog.total} sets · {DB.sessionVolume(day.exercises.flatMap((e,ei)=>e.sets.map((s,si)=>{const l=getLog(state,day.id,ei,si);return l&&l.done?l:{weight:0,reps:0};}))).toLocaleString()} {unit} volume</div>
+              <div className="row gap8">
+                <button className="btn ghost grow" onClick={()=>onUncompleteDay(day.id)}><Icon name="back" size={16}/> Reopen</button>
+                <button className="btn primary grow" onClick={onAdvance}>Next workout <Icon name="chevron" size={16}/></button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {restState && (
+        <RestTimer key={restState.key} secs={restState.secs}
+          onDone={()=>setRestState(null)} onClose={()=>setRestState(null)} />
+      )}
+    </div>
+  );
+}
+
+Object.assign(window, { TodayScreen, getLog, exDone, dayProgress });
