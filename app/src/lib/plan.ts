@@ -87,7 +87,7 @@ export function normalizePlan(obj: RawPlanInput): Plan {
           sets: (e.sets || []).map((s) =>
             s.durationSec != null
               ? { durationSec: s.durationSec, restSec: s.restSec || 60 }
-              : { weight: s.weight || 0, reps: s.reps || 0, restSec: s.restSec || 90 },
+              : { weight: 0, reps: s.reps || 0, restSec: s.restSec || 90 },
           ),
         })),
       })),

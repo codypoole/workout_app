@@ -274,7 +274,7 @@ export default function App() {
 
   return (
     <div className="app" id="app-root" data-theme={settings.theme} data-type={settings.type}>
-      <div className="screen" style={{ paddingTop: 0 }}>
+      <div className="screen">
         <div style={{ position: 'absolute', inset: 0 }}>
           {tab === 'today' && (
             <TodayScreen

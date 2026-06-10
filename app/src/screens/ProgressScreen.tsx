@@ -22,19 +22,17 @@ export function ProgressScreen({ state, onOpenExercise, onOpenSettings, onToggle
   const favorites = state.favorites || [];
   const hasFavorites = favorites.length > 0;
 
-  // Build tracked exercises: filter by favorites if any exist
-  const allTracked = Object.keys(state.history)
-    .map((id) => ({
-      id,
-      meta: state.library.find((e) => e.id === id) || ({ name: id, group: '' } as Exercise),
-      stats: exerciseStats(state.history, id),
-    }))
-    .filter((x) => x.stats.sessions.length)
-    .sort((a, b) => b.stats.best1RM - a.stats.best1RM);
-
+  // Only show tracked exercises when favorites are set
   const tracked = hasFavorites
-    ? allTracked.filter((t) => favorites.includes(t.id))
-    : allTracked;
+    ? favorites
+        .map((id) => ({
+          id,
+          meta: state.library.find((e) => e.id === id) || ({ name: id, group: '' } as Exercise),
+          stats: exerciseStats(state.history, id),
+        }))
+        .filter((x) => x.stats.sessions.length)
+        .sort((a, b) => b.stats.best1RM - a.stats.best1RM)
+    : [];
 
   const weekVol: Record<string, number> = {};
   // Only count volume for tracked exercises
@@ -65,7 +63,7 @@ export function ProgressScreen({ state, onOpenExercise, onOpenSettings, onToggle
         <div className="row between">
           <div>
             <div className="eyebrow">Analytics</div>
-            <div className="h1">Progress</div>
+            <div className="h1">Profile</div>
           </div>
           <div className="row gap8">
             <button
@@ -90,7 +88,7 @@ export function ProgressScreen({ state, onOpenExercise, onOpenSettings, onToggle
 
       <div className="scroll">
         <div className="col gap16" style={{ padding: '10px 16px 24px' }}>
-          {!hasFavorites && tracked.length === 0 ? (
+          {!hasFavorites ? (
             <div className="card" style={{ padding: 24, textAlign: 'center' }}>
               <div className="accent" style={{ display: 'flex', justifyContent: 'center', marginBottom: 12 }}>
                 <Icon name="star" size={32} />

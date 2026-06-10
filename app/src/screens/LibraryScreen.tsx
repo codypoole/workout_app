@@ -6,7 +6,7 @@ import { Icon } from '@/components/Icon';
 import { Sheet } from '@/components/Sheet';
 import { GroupDot } from '@/components/GroupDot';
 
-const GROUPS = ['All', 'Chest', 'Back', 'Legs', 'Shoulders', 'Arms', 'Core'];
+const GROUPS = ['All', 'Chest', 'Back', 'Legs', 'Shoulders', 'Arms', 'Core', 'Full Body', 'Cardio'];
 const EQUIPMENT = ['Barbell', 'Dumbbell', 'Machine', 'Cable', 'Bodyweight', 'Kettlebell', 'Other'];
 const EX_TYPES: [ExerciseType, string][] = [
   ['weight', 'Weight × reps'],
@@ -103,7 +103,7 @@ export function LibraryScreen({ state, onSave, onDelete, onOpenExercise }: Libra
                         <div className="title clamp1" style={{ fontSize: 15, color: 'var(--text)' }}>{ex.name}</div>
                         <div className="row gap6" style={{ marginTop: 3 }}>
                           {ex.custom && <span className="chip" style={{ padding: '1px 6px', fontSize: 9, flexShrink: 0 }}>Custom</span>}
-                          <span className="label clamp1">{ex.equipment} · {(ex.muscles || []).slice(0, 3).join(', ')}</span>
+                          <span className="label clamp1">{ex.equipment} · {ex.group}</span>
                         </div>
                       </button>
                       <button className="icon-btn" style={{ width: 36, height: 36 }} onClick={() => setEdit({ ...ex })} aria-label="Edit exercise">
@@ -137,7 +137,6 @@ function ExerciseEditor({ ex, onSave, onDelete }: { ex: Exercise; onSave: (e: Ex
   const [group, setGroup] = useState(ex.group);
   const [equipment, setEquipment] = useState(ex.equipment);
   const [type, setType] = useState<ExerciseType>(ex.type);
-  const [muscles, setMuscles] = useState((ex.muscles || []).join(', '));
   const [notes, setNotes] = useState(ex.notes || '');
 
   function save() {
@@ -148,7 +147,7 @@ function ExerciseEditor({ ex, onSave, onDelete }: { ex: Exercise; onSave: (e: Ex
       group,
       equipment,
       type,
-      muscles: muscles.split(',').map((m) => m.trim()).filter(Boolean),
+      muscles: ex.muscles || [],
       notes,
       custom: ex.id ? ex.custom : true,
     });
@@ -211,10 +210,6 @@ function ExerciseEditor({ ex, onSave, onDelete }: { ex: Exercise; onSave: (e: Ex
             </button>
           ))}
         </div>
-      </div>
-      <div className="col gap6">
-        <span className="eyebrow">Muscles worked</span>
-        <input className="field" value={muscles} onChange={(e) => setMuscles(e.target.value)} placeholder="Chest, Triceps, Front Delts" />
       </div>
       <div className="col gap6">
         <span className="eyebrow">Notes / cues</span>

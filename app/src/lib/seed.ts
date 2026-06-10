@@ -298,8 +298,8 @@ export const SCHEMA_EXAMPLE = `{
             {
               "exerciseId": "barbell-bench-press",
               "sets": [
-                { "weight": 135, "reps": 8, "restSec": 120 },
-                { "weight": 155, "reps": 6, "restSec": 150 }
+                { "reps": 8, "restSec": 120 },
+                { "reps": 6, "restSec": 150 }
               ]
             },
             {
@@ -400,8 +400,8 @@ It must match this exact schema:
             {
               "exerciseId": "barbell-bench-press",   // MUST be an id from the list below
               "sets": [
-                { "weight": 135, "reps": 8, "restSec": 120 },
-                { "weight": 155, "reps": 6, "restSec": 150 }
+                { "reps": 8, "restSec": 120 },
+                { "reps": 6, "restSec": 150 }
               ]
             },
             {
@@ -421,10 +421,11 @@ It must match this exact schema:
 RULES — follow exactly:
 - "exerciseId" MUST be one of the ids in the list below. Never invent an id. If you need a movement that isn't listed, pick the closest available id.
 - For exercises of type "timed", every set uses { "durationSec": <seconds>, "restSec": <seconds> } — never weight/reps.
-- For type "bodyweight", set "weight": 0 (you may add weight for weighted variations).
+- Do NOT include "weight" in any set — the user fills in their own weights. Only specify "reps" and "restSec".
+- For type "bodyweight", just specify "reps" and "restSec".
 - "restSec" is the rest taken AFTER that set, in seconds.
 - Include recovery days as { "name": "Rest", "rest": true, "exercises": [] }.
-- Progress load/reps sensibly across weeks.
+- You may use special set notations like "dropset 10-8-6" in the day's focus field.
 
 AVAILABLE EXERCISES — use the id on the left:
 ${lines}

@@ -1,7 +1,7 @@
 /* ============ PLAN — weeks/days + JSON import + multi-plan management ============ */
 import { useMemo, useState } from 'react';
 import type { AppState, Exercise, Plan } from '@/types';
-import { buildClaudePrompt, makeSamplePlan } from '@/lib/seed';
+import { buildClaudePrompt, makeSamplePlan, uid } from '@/lib/seed';
 import { normalizePlan, stripPlan, validatePlanJson, type ValidationResult } from '@/lib/plan';
 import { Icon } from '@/components/Icon';
 import { Sheet } from '@/components/Sheet';
@@ -25,6 +25,7 @@ export function PlanScreen({ state, exMap, activeRef, onSetActive, onImport, onA
   const plans = state.plans || [plan];
   const [wk, setWk] = useState(activeRef ? activeRef.week : 0);
   const [showImport, setShowImport] = useState(false);
+  const [showBuilder, setShowBuilder] = useState(false);
   const [showPlans, setShowPlans] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const week = plan.weeks[wk];
@@ -49,11 +50,11 @@ export function PlanScreen({ state, exMap, activeRef, onSetActive, onImport, onA
             </button>
             <button
               className="icon-btn"
-              style={{ width: 44, height: 44, borderColor: 'var(--accent)', color: 'var(--accent)' }}
-              onClick={() => setShowImport(true)}
-              aria-label="Import plan"
+              style={{ width: 44, height: 44, background: 'var(--accent)', color: 'var(--accent-ink)', border: 'none' }}
+              onClick={() => setShowBuilder(true)}
+              aria-label="Create plan"
             >
-              <Icon name="upload" size={20} />
+              <Icon name="plus" size={22} />
             </button>
           </div>
         </div>
@@ -122,6 +123,13 @@ export function PlanScreen({ state, exMap, activeRef, onSetActive, onImport, onA
           })}
         </div>
       </div>
+
+      <Sheet open={showBuilder} onClose={() => setShowBuilder(false)} title="New plan" full>
+        <PlanBuilder
+          library={state.library}
+          onImport={(p) => { onImport(p); setShowBuilder(false); }}
+        />
+      </Sheet>
 
       <Sheet open={showImport} onClose={() => setShowImport(false)} title="Import plan" full>
         <ImportFlow library={state.library} onImport={(p) => { onImport(p); setShowImport(false); }} />
@@ -362,6 +370,457 @@ function Stat({ n, l }: { n: number; l: string }) {
     <div className="col">
       <div className="numbig" style={{ fontSize: 22 }}>{n}</div>
       <div className="label" style={{ fontSize: 11 }}>{l}</div>
+    </div>
+  );
+}
+
+/* ---- Plan builder (create from scratch) ---- */
+const GOALS = ['Hypertrophy', 'Strength', 'Endurance', 'Cut', 'Powerlifting', 'General Fitness', 'Custom'];
+
+interface BuilderDay {
+  name: string;
+  focus: string;
+  rest: boolean;
+  exercises: { exerciseId: string; sets: number; reps: number }[];
+}
+interface BuilderWeek {
+  name: string;
+  days: BuilderDay[];
+}
+
+function emptyDay(name = 'Day'): BuilderDay {
+  return { name, focus: '', rest: false, exercises: [] };
+}
+function restDay(): BuilderDay {
+  return { name: 'Rest', focus: 'Recovery', rest: true, exercises: [] };
+}
+
+function PlanBuilder({ library, onImport }: { library: Exercise[]; onImport: (plan: Plan) => void }) {
+  const [step, setStep] = useState<'info' | 'days' | 'exercises'>('info');
+  const [name, setName] = useState('');
+  const [goal, setGoal] = useState('Hypertrophy');
+  const [customGoal, setCustomGoal] = useState('');
+  const [weeksCount, setWeeksCount] = useState(4);
+  const [weeks, setWeeks] = useState<BuilderWeek[]>([{ name: 'Week 1', days: [emptyDay('Day 1')] }]);
+  const [editWeek, setEditWeek] = useState(0);
+  const [editDay, setEditDay] = useState<number | null>(null);
+  const [showExPicker, setShowExPicker] = useState(false);
+  const [showImportJson, setShowImportJson] = useState(false);
+
+  const finalGoal = goal === 'Custom' ? customGoal || 'Custom' : goal;
+
+  function addWeek() {
+    setWeeks((w) => [...w, { name: `Week ${w.length + 1}`, days: [emptyDay('Day 1')] }]);
+    setEditWeek(weeks.length);
+  }
+
+  function duplicateWeek(wi: number) {
+    const src = weeks[wi];
+    const copy: BuilderWeek = {
+      name: `Week ${weeks.length + 1}`,
+      days: src.days.map((d) => ({ ...d, exercises: d.exercises.map((e) => ({ ...e })) })),
+    };
+    setWeeks((w) => [...w, copy]);
+    setEditWeek(weeks.length);
+  }
+
+  function removeWeek(wi: number) {
+    if (weeks.length <= 1) return;
+    setWeeks((w) => w.filter((_, i) => i !== wi));
+    if (editWeek >= weeks.length - 1) setEditWeek(Math.max(0, weeks.length - 2));
+  }
+
+  function addDay(wi: number) {
+    setWeeks((w) => w.map((wk, i) =>
+      i === wi ? { ...wk, days: [...wk.days, emptyDay(`Day ${wk.days.length + 1}`)] } : wk
+    ));
+  }
+
+  function addRestDay(wi: number) {
+    setWeeks((w) => w.map((wk, i) =>
+      i === wi ? { ...wk, days: [...wk.days, restDay()] } : wk
+    ));
+  }
+
+  function removeDay(wi: number, di: number) {
+    setWeeks((w) => w.map((wk, i) =>
+      i === wi ? { ...wk, days: wk.days.filter((_, j) => j !== di) } : wk
+    ));
+    setEditDay(null);
+  }
+
+  function updateDay(wi: number, di: number, patch: Partial<BuilderDay>) {
+    setWeeks((w) => w.map((wk, i) =>
+      i === wi ? { ...wk, days: wk.days.map((d, j) => j === di ? { ...d, ...patch } : d) } : wk
+    ));
+  }
+
+  function addExercise(wi: number, di: number, exId: string) {
+    setWeeks((w) => w.map((wk, i) =>
+      i === wi ? {
+        ...wk,
+        days: wk.days.map((d, j) =>
+          j === di ? { ...d, exercises: [...d.exercises, { exerciseId: exId, sets: 3, reps: 10 }] } : d
+        ),
+      } : wk
+    ));
+  }
+
+  function removeExercise(wi: number, di: number, ei: number) {
+    setWeeks((w) => w.map((wk, i) =>
+      i === wi ? {
+        ...wk,
+        days: wk.days.map((d, j) =>
+          j === di ? { ...d, exercises: d.exercises.filter((_, k) => k !== ei) } : d
+        ),
+      } : wk
+    ));
+  }
+
+  function updateExercise(wi: number, di: number, ei: number, patch: Partial<BuilderDay['exercises'][0]>) {
+    setWeeks((w) => w.map((wk, i) =>
+      i === wi ? {
+        ...wk,
+        days: wk.days.map((d, j) =>
+          j === di ? { ...d, exercises: d.exercises.map((e, k) => k === ei ? { ...e, ...patch } : e) } : d
+        ),
+      } : wk
+    ));
+  }
+
+  function buildPlan(): Plan {
+    return {
+      id: uid('plan'),
+      name: name || 'My Plan',
+      goal: finalGoal,
+      weeksCount,
+      startDate: new Date().toISOString().slice(0, 10),
+      weeks: weeks.map((w) => ({
+        id: uid('wk'),
+        name: w.name,
+        days: w.days.map((d) => ({
+          id: uid('day'),
+          name: d.name,
+          focus: d.focus,
+          rest: d.rest,
+          exercises: d.rest ? [] : d.exercises.map((e) => ({
+            exerciseId: e.exerciseId,
+            sets: Array.from({ length: e.sets }, () => ({ weight: 0, reps: e.reps, restSec: 90 })),
+          })),
+        })),
+      })),
+    };
+  }
+
+  const totalDays = weeks.reduce((a, w) => a + w.days.length, 0);
+  const totalExercises = weeks.reduce((a, w) => a + w.days.reduce((b, d) => b + d.exercises.length, 0), 0);
+  const canFinish = name.trim() && totalDays > 0;
+
+  if (step === 'info') {
+    return (
+      <div className="col gap16" style={{ paddingTop: 6 }}>
+        <div className="col gap6">
+          <span className="eyebrow">Plan name</span>
+          <input className="field" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Push Pull Legs" autoFocus />
+        </div>
+        <div className="col gap6">
+          <span className="eyebrow">Goal</span>
+          <div className="row gap6 wrap">
+            {GOALS.map((g) => (
+              <button
+                key={g}
+                className="chip"
+                style={{ height: 34, padding: '0 13px', ...(g === goal ? { background: 'var(--accent)', color: 'var(--accent-ink)', borderColor: 'transparent' } : {}) }}
+                onClick={() => setGoal(g)}
+              >
+                {g}
+              </button>
+            ))}
+          </div>
+          {goal === 'Custom' && (
+            <input className="field" value={customGoal} onChange={(e) => setCustomGoal(e.target.value)} placeholder="Your goal…" style={{ marginTop: 4 }} />
+          )}
+        </div>
+        <div className="col gap6">
+          <span className="eyebrow">Total weeks planned</span>
+          <div className="row gap8">
+            {[4, 6, 8, 12].map((n) => (
+              <button
+                key={n}
+                className="chip"
+                style={{ height: 34, padding: '0 14px', ...(n === weeksCount ? { background: 'var(--accent)', color: 'var(--accent-ink)', borderColor: 'transparent' } : {}) }}
+                onClick={() => setWeeksCount(n)}
+              >
+                {n}
+              </button>
+            ))}
+            <input
+              className="field mono"
+              type="number"
+              min={1}
+              max={52}
+              value={weeksCount}
+              onChange={(e) => setWeeksCount(Math.max(1, parseInt(e.target.value) || 1))}
+              style={{ width: 56, height: 34, textAlign: 'center', padding: '0 6px' }}
+            />
+          </div>
+        </div>
+
+        <button className="btn primary block lg" disabled={!name.trim()} onClick={() => setStep('days')}>
+          Next: Build schedule <Icon name="chevron" size={16} />
+        </button>
+
+        <div className="divide" />
+        <button className="btn ghost block" style={{ height: 44, fontSize: 13 }} onClick={() => setShowImportJson(true)}>
+          <Icon name="upload" size={16} /> Import JSON instead
+        </button>
+
+        <Sheet open={showImportJson} onClose={() => setShowImportJson(false)} title="Import plan" full>
+          <ImportFlow library={library} onImport={onImport} />
+        </Sheet>
+      </div>
+    );
+  }
+
+  const currentWeek = weeks[editWeek];
+
+  return (
+    <div className="col gap12" style={{ paddingTop: 6 }}>
+      {/* Plan summary bar */}
+      <div className="card-2" style={{ padding: '10px 14px' }}>
+        <div className="row between">
+          <div>
+            <div className="title" style={{ fontSize: 14 }}>{name || 'My Plan'}</div>
+            <div className="label">{finalGoal} · {weeks.length} week{weeks.length !== 1 ? 's' : ''} · {totalDays} days · {totalExercises} exercises</div>
+          </div>
+          <button className="btn ghost" style={{ height: 32, fontSize: 12, padding: '0 10px' }} onClick={() => setStep('info')}>
+            <Icon name="edit" size={14} />
+          </button>
+        </div>
+      </div>
+
+      {/* Week tabs */}
+      <div className="row gap8" style={{ overflowX: 'auto' }}>
+        {weeks.map((w, i) => (
+          <button
+            key={i}
+            className="chip"
+            style={{ height: 32, padding: '0 12px', whiteSpace: 'nowrap', ...(i === editWeek ? { background: 'var(--accent)', color: 'var(--accent-ink)', borderColor: 'transparent' } : {}) }}
+            onClick={() => { setEditWeek(i); setEditDay(null); }}
+          >
+            {w.name}
+          </button>
+        ))}
+        <button className="chip" style={{ height: 32, padding: '0 10px' }} onClick={addWeek}>
+          <Icon name="plus" size={14} />
+        </button>
+      </div>
+
+      {/* Week actions */}
+      <div className="row gap8">
+        <button className="btn ghost grow" style={{ height: 34, fontSize: 12 }} onClick={() => duplicateWeek(editWeek)}>
+          <Icon name="copy" size={14} /> Duplicate week
+        </button>
+        {weeks.length > 1 && (
+          <button className="btn ghost" style={{ height: 34, fontSize: 12, color: 'var(--danger)' }} onClick={() => removeWeek(editWeek)}>
+            <Icon name="trash" size={14} />
+          </button>
+        )}
+      </div>
+
+      {/* Days in this week */}
+      <div className="col gap8">
+        {currentWeek.days.map((day, di) => {
+          const isEditing = editDay === di;
+          const exMeta = (id: string) => library.find((e) => e.id === id);
+          return (
+            <div key={di} className="card" style={{ padding: 12, borderColor: isEditing ? 'var(--accent)' : 'var(--line)' }}>
+              <div className="row between" style={{ marginBottom: isEditing ? 10 : 0 }}>
+                <button
+                  className="row gap8"
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', flex: 1, minWidth: 0, textAlign: 'left', padding: 0, color: 'inherit' }}
+                  onClick={() => setEditDay(isEditing ? null : di)}
+                >
+                  <div className="mono faint" style={{ width: 20, fontSize: 11, flexShrink: 0 }}>D{di + 1}</div>
+                  <div style={{ minWidth: 0 }}>
+                    <div className="title" style={{ fontSize: 14 }}>{day.name}</div>
+                    <div className="label">{day.rest ? 'Rest day' : `${day.exercises.length} exercises${day.focus ? ` · ${day.focus}` : ''}`}</div>
+                  </div>
+                </button>
+                <div className="row gap6">
+                  <button className="icon-btn" style={{ width: 30, height: 30 }} onClick={() => setEditDay(isEditing ? null : di)}>
+                    <Icon name={isEditing ? 'chevdown' : 'chevron'} size={14} />
+                  </button>
+                </div>
+              </div>
+
+              {isEditing && (
+                <div className="col gap10">
+                  {!day.rest && (
+                    <>
+                      <div className="row gap8">
+                        <input
+                          className="field"
+                          value={day.name}
+                          onChange={(e) => updateDay(editWeek, di, { name: e.target.value })}
+                          placeholder="Day name"
+                          style={{ flex: 1, height: 36 }}
+                        />
+                        <input
+                          className="field"
+                          value={day.focus}
+                          onChange={(e) => updateDay(editWeek, di, { focus: e.target.value })}
+                          placeholder="Focus (e.g. Chest · Shoulders)"
+                          style={{ flex: 1, height: 36 }}
+                        />
+                      </div>
+
+                      {/* Exercise list */}
+                      {day.exercises.map((ex, ei) => {
+                        const meta = exMeta(ex.exerciseId);
+                        return (
+                          <div key={ei} className="card-2 row between" style={{ padding: '8px 10px' }}>
+                            <div className="row gap8" style={{ flex: 1, minWidth: 0 }}>
+                              <GroupDot group={meta?.group || ''} size={6} />
+                              <div style={{ minWidth: 0 }}>
+                                <div className="title clamp1" style={{ fontSize: 13 }}>{meta?.name || ex.exerciseId}</div>
+                                <div className="row gap6" style={{ marginTop: 2 }}>
+                                  <div className="row gap4">
+                                    <span className="label" style={{ fontSize: 11 }}>Sets:</span>
+                                    <input
+                                      className="field mono"
+                                      type="number"
+                                      min={1}
+                                      max={10}
+                                      value={ex.sets}
+                                      onChange={(e) => updateExercise(editWeek, di, ei, { sets: Math.max(1, parseInt(e.target.value) || 1) })}
+                                      style={{ width: 38, height: 24, fontSize: 12, padding: '0 4px', textAlign: 'center' }}
+                                    />
+                                  </div>
+                                  <div className="row gap4">
+                                    <span className="label" style={{ fontSize: 11 }}>Reps:</span>
+                                    <input
+                                      className="field mono"
+                                      type="number"
+                                      min={1}
+                                      max={100}
+                                      value={ex.reps}
+                                      onChange={(e) => updateExercise(editWeek, di, ei, { reps: Math.max(1, parseInt(e.target.value) || 1) })}
+                                      style={{ width: 38, height: 24, fontSize: 12, padding: '0 4px', textAlign: 'center' }}
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                            <button className="icon-btn" style={{ width: 28, height: 28, color: 'var(--danger)', flexShrink: 0 }} onClick={() => removeExercise(editWeek, di, ei)}>
+                              <Icon name="x" size={14} />
+                            </button>
+                          </div>
+                        );
+                      })}
+
+                      <button className="btn ghost block" style={{ height: 36, fontSize: 12 }} onClick={() => { setEditDay(di); setShowExPicker(true); }}>
+                        <Icon name="plus" size={14} /> Add exercise
+                      </button>
+                    </>
+                  )}
+
+                  <button
+                    className="btn ghost"
+                    style={{ height: 32, fontSize: 11, color: 'var(--danger)', alignSelf: 'flex-start' }}
+                    onClick={() => removeDay(editWeek, di)}
+                  >
+                    <Icon name="trash" size={13} /> Remove day
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        })}
+
+        <div className="row gap8">
+          <button className="btn ghost grow" style={{ height: 38, fontSize: 13 }} onClick={() => addDay(editWeek)}>
+            <Icon name="plus" size={15} /> Add day
+          </button>
+          <button className="btn ghost grow" style={{ height: 38, fontSize: 13 }} onClick={() => addRestDay(editWeek)}>
+            <Icon name="plus" size={15} /> Rest day
+          </button>
+        </div>
+      </div>
+
+      <button className="btn primary block lg" disabled={!canFinish} onClick={() => onImport(buildPlan())}>
+        <Icon name="check" size={18} /> Create plan ({totalExercises} exercises)
+      </button>
+
+      {showExPicker && editDay !== null && (
+        <Sheet open onClose={() => setShowExPicker(false)} title="Add exercise" full>
+          <ExercisePicker
+            library={library}
+            onPick={(id) => { addExercise(editWeek, editDay, id); setShowExPicker(false); }}
+          />
+        </Sheet>
+      )}
+    </div>
+  );
+}
+
+/* ---- Minimal exercise picker for the plan builder ---- */
+function ExercisePicker({ library, onPick }: { library: Exercise[]; onPick: (id: string) => void }) {
+  const [q, setQ] = useState('');
+  const [group, setGroup] = useState<string | null>(null);
+  const groups = [...new Set(library.map((e) => e.group))];
+  const filtered = library.filter((e) => {
+    if (group && e.group !== group) return false;
+    if (q) return e.name.toLowerCase().includes(q.toLowerCase());
+    return true;
+  });
+
+  return (
+    <div className="col gap10" style={{ paddingTop: 4 }}>
+      <div className="row" style={{ position: 'relative' }}>
+        <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-faint)' }}>
+          <Icon name="search" size={18} />
+        </span>
+        <input className="field" style={{ paddingLeft: 42 }} placeholder="Search exercises…" value={q} onChange={(e) => setQ(e.target.value)} autoFocus />
+      </div>
+      <div className="row gap6 wrap">
+        <button
+          className="chip"
+          style={{ height: 28, padding: '0 10px', ...(group === null ? { background: 'var(--accent)', color: 'var(--accent-ink)', borderColor: 'transparent' } : {}) }}
+          onClick={() => setGroup(null)}
+        >
+          All
+        </button>
+        {groups.map((g) => (
+          <button
+            key={g}
+            className="chip"
+            style={{ height: 28, padding: '0 10px', ...(group === g ? { background: 'var(--accent)', color: 'var(--accent-ink)', borderColor: 'transparent' } : {}) }}
+            onClick={() => setGroup(g === group ? null : g)}
+          >
+            {g}
+          </button>
+        ))}
+      </div>
+      <div className="col gap6">
+        {filtered.map((e) => (
+          <button
+            key={e.id}
+            className="card-2 row between"
+            style={{ padding: '10px 12px', cursor: 'pointer', border: 'none', background: 'var(--surface-2)', borderRadius: 'var(--radius-sm)', textAlign: 'left', width: '100%', color: 'inherit' }}
+            onClick={() => onPick(e.id)}
+          >
+            <div className="row gap8" style={{ minWidth: 0, flex: 1 }}>
+              <GroupDot group={e.group} size={6} />
+              <div style={{ minWidth: 0 }}>
+                <div className="title clamp1" style={{ fontSize: 13 }}>{e.name}</div>
+                <div className="label" style={{ fontSize: 11 }}>{e.group} · {e.equipment}</div>
+              </div>
+            </div>
+            <span className="accent" style={{ flexShrink: 0 }}><Icon name="plus" size={16} /></span>
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

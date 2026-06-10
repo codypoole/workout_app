@@ -7,7 +7,7 @@ export const TABS: { id: TabId; label: string; icon: IconName }[] = [
   { id: 'today', label: 'Today', icon: 'today' },
   { id: 'plan', label: 'Plan', icon: 'plan' },
   { id: 'library', label: 'Library', icon: 'library' },
-  { id: 'progress', label: 'Progress', icon: 'progress' },
+  { id: 'progress', label: 'Profile', icon: 'progress' },
 ];
 
 interface TabBarProps {
@@ -20,7 +20,7 @@ export function TabBar({ tab, onChange, dock }: TabBarProps) {
   return (
     <div
       className={'tabbar' + (dock ? ' dock' : '')}
-      style={dock ? undefined : { position: 'absolute', left: 0, right: 0, bottom: 0 }}
+      style={dock ? undefined : undefined}
     >
       {TABS.map((tb) => (
         <button
