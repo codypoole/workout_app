@@ -11,7 +11,14 @@ import { store, useStoreSnapshot } from '@/data/useStore';
 
 import { TabBar, type TabId } from '@/components/TabBar';
 import { Icon } from '@/components/Icon';
-import { TodayScreen, type RestState } from '@/screens/TodayScreen';
+import { RestTimer } from '@/components/RestTimer';
+import {
+  ensureNotificationPermission,
+  loadRestTimer,
+  saveRestTimer,
+  type RestTimer as RestTimerState,
+} from '@/lib/restTimer';
+import { TodayScreen } from '@/screens/TodayScreen';
 import { PlanScreen } from '@/screens/PlanScreen';
 import { LibraryScreen, SwapSheet } from '@/screens/LibraryScreen';
 import { ProgressScreen, ExerciseDetail } from '@/screens/ProgressScreen';
@@ -29,7 +36,7 @@ export default function App() {
   const [tab, setTab] = useState<TabId>('today');
   const [active, setActive] = useState({ week: 0, day: 0 });
   const [focusIdx, setFocusIdx] = useState(0);
-  const [restState, setRestState] = useState<RestState | null>(null);
+  const [restTimer, setRestTimer] = useState<RestTimerState | null>(() => loadRestTimer());
   const [swap, setSwap] = useState<{ ei: number } | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
@@ -47,6 +54,17 @@ export default function App() {
     const meta = document.querySelector('meta[name="theme-color"]');
     if (meta) meta.setAttribute('content', settings.theme === 'paper' ? '#f3f1ec' : '#0a0a0b');
   }, [settings.theme, settings.type]);
+
+  // Persist the rest timer so it survives reloads / app relaunch.
+  useEffect(() => {
+    saveRestTimer(restTimer);
+  }, [restTimer]);
+
+  function startRest(secs: number) {
+    if (!secs) return;
+    ensureNotificationPermission();
+    setRestTimer({ id: Date.now(), total: secs, endAt: Date.now() + secs * 1000, pausedRemaining: null });
+  }
 
   const exMap = useMemo(() => (state ? buildExMap(state.library) : {}), [state]);
 
@@ -332,8 +350,7 @@ export default function App() {
               onAddSet={addSetToDay}
               onRemoveSet={removeSetFromDay}
               onOpenExercise={(id) => setDetailId(id)}
-              restState={restState}
-              setRestState={setRestState}
+              onStartRest={startRest}
               focusIdx={focusIdx}
               setFocusIdx={setFocusIdx}
             />
@@ -363,6 +380,11 @@ export default function App() {
       </div>
 
       <TabBar tab={tab} onChange={setTab} dock={useDock} />
+
+      {/* Rest timer lives at the app level so it keeps running across tab switches. */}
+      {restTimer && (
+        <RestTimer key={restTimer.id} timer={restTimer} onChange={setRestTimer} onClose={() => setRestTimer(null)} />
+      )}
 
       {/* overlays */}
       {swap != null && activeDay && (

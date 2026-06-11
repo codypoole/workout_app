@@ -13,186 +13,6 @@ import { ConfirmModal } from '@/components/ConfirmModal';
 type ExMap = Record<string, Exercise>;
 type LogFn = (dayId: string, ei: number, si: number, payload: LoggedSet | null, restSec?: number) => void;
 
-export interface RestState {
-  secs: number;
-  key: number;
-}
-
-/* ---- Full-screen rest timer with animated countdown ring ---- */
-function RestTimer({ secs, onClose }: { secs: number; onClose: () => void }) {
-  const [left, setLeft] = useState(secs);
-  const [total, setTotal] = useState(secs);
-  const [paused, setPaused] = useState(false);
-  const [editing, setEditing] = useState(false);
-  const [editMin, setEditMin] = useState('0');
-  const [editSec, setEditSec] = useState('00');
-
-  useEffect(() => {
-    setLeft(secs);
-    setTotal(secs);
-    setPaused(false);
-    setEditing(false);
-  }, [secs]);
-
-  useEffect(() => {
-    if (paused || editing) return;
-    if (left <= 0) {
-      onClose();
-      return;
-    }
-    const t = setTimeout(() => setLeft((l) => l - 1), 1000);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [left, paused, editing]);
-
-  function adjust(delta: number) {
-    const nl = Math.max(0, left + delta);
-    setLeft(nl);
-    if (nl > total) setTotal(nl);
-  }
-
-  function openEdit() {
-    setEditMin(String(Math.floor(left / 60)));
-    setEditSec(String(left % 60).padStart(2, '0'));
-    setPaused(true);
-    setEditing(true);
-  }
-  function saveEdit() {
-    const m = Math.max(0, parseInt(editMin || '0', 10) || 0);
-    const s = Math.max(0, Math.min(59, parseInt(editSec || '0', 10) || 0));
-    const next = Math.max(1, m * 60 + s);
-    setLeft(next);
-    setTotal(next);
-    setEditing(false);
-    setPaused(false);
-  }
-
-  // SVG ring geometry
-  const size = 260;
-  const stroke = 14;
-  const r = (size - stroke) / 2;
-  const circ = 2 * Math.PI * r;
-  const ratio = total ? Math.max(0, Math.min(1, left / total)) : 0;
-  const off = circ * (1 - ratio);
-
-  return (
-    <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 300,
-        background: 'color-mix(in oklch, var(--bg) 96%, transparent)',
-        backdropFilter: 'blur(8px)',
-        WebkitBackdropFilter: 'blur(8px)',
-        display: 'flex',
-        flexDirection: 'column',
-        padding: 'calc(env(safe-area-inset-top) + 16px) 24px calc(env(safe-area-inset-bottom) + 28px)',
-        animation: 'fade .2s ease',
-      }}
-    >
-      <div className="row between">
-        <div className="row gap8">
-          <span className="accent">
-            <Icon name="timer" size={18} />
-          </span>
-          <span className="eyebrow">Rest timer</span>
-        </div>
-        <button className="icon-btn" onClick={onClose} aria-label="Close rest timer">
-          <Icon name="x" size={18} />
-        </button>
-      </div>
-
-      <div className="col center grow" style={{ justifyContent: 'center', gap: 28 }}>
-        <div style={{ position: 'relative', width: size, height: size }}>
-          <svg width={size} height={size} style={{ transform: 'rotate(-90deg)' }}>
-            <circle cx={size / 2} cy={size / 2} r={r} fill="none" strokeWidth={stroke} stroke="var(--surface-3)" />
-            <circle
-              cx={size / 2}
-              cy={size / 2}
-              r={r}
-              fill="none"
-              strokeWidth={stroke}
-              stroke="var(--accent)"
-              strokeLinecap="round"
-              strokeDasharray={circ}
-              strokeDashoffset={off}
-              style={{ transition: paused || editing ? 'none' : 'stroke-dashoffset 1s linear' }}
-            />
-          </svg>
-          <div className="col center" style={{ position: 'absolute', inset: 0, justifyContent: 'center', gap: 6 }}>
-            {editing ? (
-              <div className="row center" style={{ gap: 4 }}>
-                <input
-                  value={editMin}
-                  inputMode="numeric"
-                  onChange={(e) => setEditMin(e.target.value.replace(/\D/g, ''))}
-                  onFocus={(e) => e.target.select()}
-                  aria-label="Minutes"
-                  style={{ width: 56, textAlign: 'right', background: 'transparent', border: 'none', outline: 'none', color: 'var(--text)', fontFamily: 'var(--font-mono)', fontSize: 44, fontWeight: 800 }}
-                />
-                <span className="numbig" style={{ fontSize: 44 }}>:</span>
-                <input
-                  value={editSec}
-                  inputMode="numeric"
-                  onChange={(e) => setEditSec(e.target.value.replace(/\D/g, '').slice(0, 2))}
-                  onFocus={(e) => e.target.select()}
-                  aria-label="Seconds"
-                  style={{ width: 56, textAlign: 'left', background: 'transparent', border: 'none', outline: 'none', color: 'var(--text)', fontFamily: 'var(--font-mono)', fontSize: 44, fontWeight: 800 }}
-                />
-              </div>
-            ) : (
-              <button
-                onClick={openEdit}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}
-                aria-label="Edit time"
-              >
-                <span className="numbig accent" style={{ fontSize: 56 }}>{fmtTime(Math.max(0, left))}</span>
-                <span className="faint row gap4" style={{ fontSize: 11 }}>
-                  <Icon name="edit" size={12} /> tap to edit
-                </span>
-              </button>
-            )}
-          </div>
-        </div>
-
-        {editing ? (
-          <div className="row gap8" style={{ width: '100%', maxWidth: 320 }}>
-            <button className="btn ghost grow" style={{ height: 48 }} onClick={() => { setEditing(false); setPaused(false); }}>
-              Cancel
-            </button>
-            <button className="btn primary grow" style={{ height: 48 }} onClick={saveEdit}>
-              <Icon name="check" size={18} /> Set time
-            </button>
-          </div>
-        ) : (
-          <div className="row gap10 center">
-            <button className="btn ghost" style={{ height: 54, width: 64, fontSize: 13 }} onClick={() => adjust(-15)} aria-label="Minus 15 seconds">
-              −15s
-            </button>
-            <button
-              className="btn primary"
-              style={{ height: 64, width: 64, borderRadius: 99, padding: 0 }}
-              onClick={() => setPaused((p) => !p)}
-              aria-label={paused ? 'Resume' : 'Pause'}
-            >
-              <Icon name={paused ? 'play' : 'pause'} size={24} />
-            </button>
-            <button className="btn ghost" style={{ height: 54, width: 64, fontSize: 13 }} onClick={() => adjust(15)} aria-label="Plus 15 seconds">
-              +15s
-            </button>
-          </div>
-        )}
-      </div>
-
-      {!editing && (
-        <button className="btn primary block lg" onClick={onClose}>
-          <Icon name="check" size={20} /> Done resting
-        </button>
-      )}
-    </div>
-  );
-}
-
 /* ---- Compact tap-to-edit number field (inline set editing) ---- */
 function NumField({ value, onChange, suffix, label }: { value: number; onChange: (n: number) => void; suffix?: string; label: string }) {
   const [txt, setTxt] = useState(String(value));
@@ -600,8 +420,7 @@ export interface TodayScreenProps {
   onAddSet: (ei: number) => void;
   onRemoveSet: (ei: number, si: number) => void;
   onOpenExercise: (id: string) => void;
-  restState: RestState | null;
-  setRestState: (r: RestState | null) => void;
+  onStartRest: (secs: number) => void;
   focusIdx: number;
   setFocusIdx: (updater: number | ((i: number) => number)) => void;
 }
@@ -609,7 +428,7 @@ export interface TodayScreenProps {
 export function TodayScreen(props: TodayScreenProps) {
   const {
     state, weekName, day, exMap, unit, onLog, onCompleteDay, onUncompleteDay, onAdvance,
-    onSwap, onAddExercise, onDeleteExercise, onAddSet, onRemoveSet, onOpenExercise, restState, setRestState, focusIdx, setFocusIdx,
+    onSwap, onAddExercise, onDeleteExercise, onAddSet, onRemoveSet, onOpenExercise, onStartRest, focusIdx, setFocusIdx,
   } = props;
   const [mode, setMode] = useState<'focus' | 'day'>('focus');
 
@@ -628,7 +447,7 @@ export function TodayScreen(props: TodayScreenProps) {
 
   function handleLog(dayId: string, ei: number, si: number, payload: LoggedSet | null, restSec?: number) {
     onLog(dayId, ei, si, payload);
-    if (payload && (payload as { done?: boolean }).done && restSec) setRestState({ secs: restSec, key: Date.now() });
+    if (payload && (payload as { done?: boolean }).done && restSec) onStartRest(restSec);
   }
 
   const safeIdx = Math.min(focusIdx, day.exercises.length - 1);
@@ -748,10 +567,6 @@ export function TodayScreen(props: TodayScreenProps) {
           </div>
         )}
       </div>
-
-      {restState && (
-        <RestTimer key={restState.key} secs={restState.secs} onClose={() => setRestState(null)} />
-      )}
     </div>
   );
 }
