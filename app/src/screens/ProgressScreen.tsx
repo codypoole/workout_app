@@ -22,7 +22,8 @@ export function ProgressScreen({ state, onOpenExercise, onOpenSettings, onToggle
   const favorites = state.favorites || [];
   const hasFavorites = favorites.length > 0;
 
-  // Only show tracked exercises when favorites are set
+  // Show every favorited exercise — those with logged history first
+  // (ranked by est. 1RM), then freshly favorited ones awaiting data.
   const tracked = hasFavorites
     ? favorites
         .map((id) => ({
@@ -30,9 +31,14 @@ export function ProgressScreen({ state, onOpenExercise, onOpenSettings, onToggle
           meta: state.library.find((e) => e.id === id) || ({ name: id, group: '' } as Exercise),
           stats: exerciseStats(state.history, id),
         }))
-        .filter((x) => x.stats.sessions.length)
-        .sort((a, b) => b.stats.best1RM - a.stats.best1RM)
+        .sort((a, b) => {
+          const ah = a.stats.sessions.length > 0 ? 0 : 1;
+          const bh = b.stats.sessions.length > 0 ? 0 : 1;
+          if (ah !== bh) return ah - bh;
+          return b.stats.best1RM - a.stats.best1RM;
+        })
     : [];
+  const trackedWithHistory = tracked.filter((t) => t.stats.sessions.length > 0);
 
   const weekVol: Record<string, number> = {};
   // Only count volume for tracked exercises
@@ -49,7 +55,7 @@ export function ProgressScreen({ state, onOpenExercise, onOpenSettings, onToggle
     .slice(-8)
     .map((k) => ({ x: k.slice(5), y: Math.round(weekVol[k] / 1000) }));
 
-  const prs = tracked.map((t) => ({
+  const prs = trackedWithHistory.map((t) => ({
     name: t.meta.name,
     group: t.meta.group,
     id: t.id,
@@ -149,34 +155,42 @@ export function ProgressScreen({ state, onOpenExercise, onOpenSettings, onToggle
               )}
 
               <div className="eyebrow" style={{ paddingLeft: 2 }}>Strength trends</div>
-              {tracked.map((t) => (
-                <button key={t.id} className="card" style={{ padding: 16, textAlign: 'left', cursor: 'pointer' }} onClick={() => onOpenExercise(t.id)}>
-                  <div className="row between" style={{ marginBottom: 8 }}>
-                    <div className="row gap10" style={{ minWidth: 0, flex: 1 }}>
-                      <GroupDot group={t.meta.group} size={8} />
-                      <span className="title clamp1" style={{ flex: 1 }}>{t.meta.name}</span>
+              {tracked.map((t) => {
+                const hasHistory = t.stats.sessions.length > 0;
+                return (
+                  <button key={t.id} className="card" style={{ padding: 16, textAlign: 'left', cursor: 'pointer' }} onClick={() => onOpenExercise(t.id)}>
+                    <div className="row between" style={{ marginBottom: 8 }}>
+                      <div className="row gap10" style={{ minWidth: 0, flex: 1 }}>
+                        <GroupDot group={t.meta.group} size={8} />
+                        <span className="title clamp1" style={{ flex: 1 }}>{t.meta.name}</span>
+                      </div>
+                      {hasHistory && (
+                        <span
+                          className="chip"
+                          style={{ flexShrink: 0, ...(t.stats.delta >= 0 ? { background: 'var(--accent-soft)', color: 'var(--accent)', borderColor: 'transparent' } : { color: 'var(--danger)' }) }}
+                        >
+                          {t.stats.delta >= 0 ? '+' : ''}{t.stats.delta} {unit}
+                        </span>
+                      )}
                     </div>
-                    <span
-                      className="chip"
-                      style={{ flexShrink: 0, ...(t.stats.delta >= 0 ? { background: 'var(--accent-soft)', color: 'var(--accent)', borderColor: 'transparent' } : { color: 'var(--danger)' }) }}
-                    >
-                      {t.stats.delta >= 0 ? '+' : ''}{t.stats.delta} {unit}
-                    </span>
-                  </div>
-                  <LineChart points={t.stats.series1RM.map((p) => ({ x: mmdd(p.date), y: p.value }))} height={120} />
-                  <div className="row gap16" style={{ marginTop: 8 }}>
-                    <MiniStat n={t.stats.cur1RM + unit} l="est 1RM" />
-                    <MiniStat n={t.stats.heaviest.weight + unit} l="heaviest" />
-                    <MiniStat n={t.stats.sessions.length} l="sessions" />
-                  </div>
-                </button>
-              ))}
-
-              {hasFavorites && tracked.length === 0 && (
-                <div className="card-2" style={{ padding: 20, textAlign: 'center' }}>
-                  <div className="faint">No history for your favorited exercises yet. Finish a workout to start tracking.</div>
-                </div>
-              )}
+                    {hasHistory ? (
+                      <>
+                        <LineChart points={t.stats.series1RM.map((p) => ({ x: mmdd(p.date), y: p.value }))} height={120} />
+                        <div className="row gap16" style={{ marginTop: 8 }}>
+                          <MiniStat n={t.stats.cur1RM + unit} l="est 1RM" />
+                          <MiniStat n={t.stats.heaviest.weight + unit} l="heaviest" />
+                          <MiniStat n={t.stats.sessions.length} l="sessions" />
+                        </div>
+                      </>
+                    ) : (
+                      <div className="row gap8 center" style={{ padding: '14px 0 4px', color: 'var(--text-faint)' }}>
+                        <Icon name="progress" size={16} />
+                        <span className="label">Finish a workout with this exercise to chart your progress.</span>
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
             </>
           )}
         </div>

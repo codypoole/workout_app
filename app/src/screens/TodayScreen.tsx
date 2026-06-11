@@ -1,13 +1,12 @@
 /* ============ TODAY — workout runner ============ */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { AppState, Exercise, LoggedSet, PlanDay, PlannedSet } from '@/types';
 import { isTimedSet } from '@/types';
 import { dayProgress, exDone, getLog } from '@/lib/selectors';
-import { epley1RM, sessionVolume } from '@/lib/calc';
+import { sessionVolume } from '@/lib/calc';
 import { fmtTime } from '@/lib/format';
 import { Icon } from '@/components/Icon';
 import { Ring } from '@/components/Ring';
-import { Stepper } from '@/components/Stepper';
 import { GroupDot } from '@/components/GroupDot';
 import { ConfirmModal } from '@/components/ConfirmModal';
 
@@ -19,79 +18,234 @@ export interface RestState {
   key: number;
 }
 
-/* ---- Rest timer bar ---- */
-function RestTimer({ secs, onDone, onClose }: { secs: number; onDone: () => void; onClose: () => void }) {
+/* ---- Full-screen rest timer with animated countdown ring ---- */
+function RestTimer({ secs, onClose }: { secs: number; onClose: () => void }) {
   const [left, setLeft] = useState(secs);
+  const [total, setTotal] = useState(secs);
   const [paused, setPaused] = useState(false);
-  const total = useRef(secs);
+  const [editing, setEditing] = useState(false);
+  const [editMin, setEditMin] = useState('0');
+  const [editSec, setEditSec] = useState('00');
+
   useEffect(() => {
     setLeft(secs);
-    total.current = secs;
+    setTotal(secs);
     setPaused(false);
+    setEditing(false);
   }, [secs]);
+
   useEffect(() => {
-    if (paused) return;
+    if (paused || editing) return;
     if (left <= 0) {
-      onDone();
+      onClose();
       return;
     }
     const t = setTimeout(() => setLeft((l) => l - 1), 1000);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [left, paused]);
-  const ratio = total.current ? left / total.current : 0;
+  }, [left, paused, editing]);
+
+  function adjust(delta: number) {
+    const nl = Math.max(0, left + delta);
+    setLeft(nl);
+    if (nl > total) setTotal(nl);
+  }
+
+  function openEdit() {
+    setEditMin(String(Math.floor(left / 60)));
+    setEditSec(String(left % 60).padStart(2, '0'));
+    setPaused(true);
+    setEditing(true);
+  }
+  function saveEdit() {
+    const m = Math.max(0, parseInt(editMin || '0', 10) || 0);
+    const s = Math.max(0, Math.min(59, parseInt(editSec || '0', 10) || 0));
+    const next = Math.max(1, m * 60 + s);
+    setLeft(next);
+    setTotal(next);
+    setEditing(false);
+    setPaused(false);
+  }
+
+  // SVG ring geometry
+  const size = 260;
+  const stroke = 14;
+  const r = (size - stroke) / 2;
+  const circ = 2 * Math.PI * r;
+  const ratio = total ? Math.max(0, Math.min(1, left / total)) : 0;
+  const off = circ * (1 - ratio);
+
   return (
     <div
       style={{
-        position: 'absolute',
-        left: 12,
-        right: 12,
-        bottom: 'calc(96px + env(safe-area-inset-bottom))',
-        zIndex: 40,
-        background: 'var(--surface)',
-        border: '1px solid var(--line-2)',
-        borderRadius: 18,
-        padding: '12px 14px',
-        boxShadow: '0 16px 40px -10px rgba(0,0,0,0.7)',
-        animation: 'pop .2s ease',
+        position: 'fixed',
+        inset: 0,
+        zIndex: 300,
+        background: 'color-mix(in oklch, var(--bg) 96%, transparent)',
+        backdropFilter: 'blur(8px)',
+        WebkitBackdropFilter: 'blur(8px)',
+        display: 'flex',
+        flexDirection: 'column',
+        padding: 'calc(env(safe-area-inset-top) + 16px) 24px calc(env(safe-area-inset-bottom) + 28px)',
+        animation: 'fade .2s ease',
       }}
     >
-      <div className="row between" style={{ marginBottom: 8 }}>
+      <div className="row between">
         <div className="row gap8">
           <span className="accent">
             <Icon name="timer" size={18} />
           </span>
-          <span className="eyebrow">Rest</span>
+          <span className="eyebrow">Rest timer</span>
         </div>
-        <div className="mono accent numbig" style={{ fontSize: 22 }}>
-          {fmtTime(Math.max(0, left))}
+        <button className="icon-btn" onClick={onClose} aria-label="Close rest timer">
+          <Icon name="x" size={18} />
+        </button>
+      </div>
+
+      <div className="col center grow" style={{ justifyContent: 'center', gap: 28 }}>
+        <div style={{ position: 'relative', width: size, height: size }}>
+          <svg width={size} height={size} style={{ transform: 'rotate(-90deg)' }}>
+            <circle cx={size / 2} cy={size / 2} r={r} fill="none" strokeWidth={stroke} stroke="var(--surface-3)" />
+            <circle
+              cx={size / 2}
+              cy={size / 2}
+              r={r}
+              fill="none"
+              strokeWidth={stroke}
+              stroke="var(--accent)"
+              strokeLinecap="round"
+              strokeDasharray={circ}
+              strokeDashoffset={off}
+              style={{ transition: paused || editing ? 'none' : 'stroke-dashoffset 1s linear' }}
+            />
+          </svg>
+          <div className="col center" style={{ position: 'absolute', inset: 0, justifyContent: 'center', gap: 6 }}>
+            {editing ? (
+              <div className="row center" style={{ gap: 4 }}>
+                <input
+                  value={editMin}
+                  inputMode="numeric"
+                  onChange={(e) => setEditMin(e.target.value.replace(/\D/g, ''))}
+                  onFocus={(e) => e.target.select()}
+                  aria-label="Minutes"
+                  style={{ width: 56, textAlign: 'right', background: 'transparent', border: 'none', outline: 'none', color: 'var(--text)', fontFamily: 'var(--font-mono)', fontSize: 44, fontWeight: 800 }}
+                />
+                <span className="numbig" style={{ fontSize: 44 }}>:</span>
+                <input
+                  value={editSec}
+                  inputMode="numeric"
+                  onChange={(e) => setEditSec(e.target.value.replace(/\D/g, '').slice(0, 2))}
+                  onFocus={(e) => e.target.select()}
+                  aria-label="Seconds"
+                  style={{ width: 56, textAlign: 'left', background: 'transparent', border: 'none', outline: 'none', color: 'var(--text)', fontFamily: 'var(--font-mono)', fontSize: 44, fontWeight: 800 }}
+                />
+              </div>
+            ) : (
+              <button
+                onClick={openEdit}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}
+                aria-label="Edit time"
+              >
+                <span className="numbig accent" style={{ fontSize: 56 }}>{fmtTime(Math.max(0, left))}</span>
+                <span className="faint row gap4" style={{ fontSize: 11 }}>
+                  <Icon name="edit" size={12} /> tap to edit
+                </span>
+              </button>
+            )}
+          </div>
         </div>
+
+        {editing ? (
+          <div className="row gap8" style={{ width: '100%', maxWidth: 320 }}>
+            <button className="btn ghost grow" style={{ height: 48 }} onClick={() => { setEditing(false); setPaused(false); }}>
+              Cancel
+            </button>
+            <button className="btn primary grow" style={{ height: 48 }} onClick={saveEdit}>
+              <Icon name="check" size={18} /> Set time
+            </button>
+          </div>
+        ) : (
+          <div className="row gap10 center">
+            <button className="btn ghost" style={{ height: 54, width: 64, fontSize: 13 }} onClick={() => adjust(-15)} aria-label="Minus 15 seconds">
+              −15s
+            </button>
+            <button
+              className="btn primary"
+              style={{ height: 64, width: 64, borderRadius: 99, padding: 0 }}
+              onClick={() => setPaused((p) => !p)}
+              aria-label={paused ? 'Resume' : 'Pause'}
+            >
+              <Icon name={paused ? 'play' : 'pause'} size={24} />
+            </button>
+            <button className="btn ghost" style={{ height: 54, width: 64, fontSize: 13 }} onClick={() => adjust(15)} aria-label="Plus 15 seconds">
+              +15s
+            </button>
+          </div>
+        )}
       </div>
-      <div className="bar" style={{ marginBottom: 10 }}>
-        <i style={{ width: ratio * 100 + '%', transition: 'width 1s linear' }} />
-      </div>
-      <div className="row gap8">
-        <button className="btn ghost grow" style={{ height: 40, fontSize: 13 }} onClick={() => setLeft((l) => l + 15)}>
-          +15s
+
+      {!editing && (
+        <button className="btn primary block lg" onClick={onClose}>
+          <Icon name="check" size={20} /> Done resting
         </button>
-        <button className="btn ghost" style={{ height: 40, width: 48 }} onClick={() => setPaused((p) => !p)} aria-label={paused ? 'Resume' : 'Pause'}>
-          <Icon name={paused ? 'play' : 'pause'} size={16} />
-        </button>
-        <button className="btn primary grow" style={{ height: 40, fontSize: 13 }} onClick={onClose}>
-          Skip rest
-        </button>
-      </div>
+      )}
     </div>
   );
 }
 
-/* ---- A single set row in focus mode ---- */
+/* ---- Compact tap-to-edit number field (inline set editing) ---- */
+function NumField({ value, onChange, suffix, label }: { value: number; onChange: (n: number) => void; suffix?: string; label: string }) {
+  const [txt, setTxt] = useState(String(value));
+  useEffect(() => setTxt(String(value)), [value]);
+  function commit(raw: string) {
+    let n = parseFloat(raw);
+    if (isNaN(n) || n < 0) n = 0;
+    n = +n.toFixed(2);
+    onChange(n);
+    setTxt(String(n));
+  }
+  return (
+    <div
+      className="row"
+      style={{ background: 'var(--surface-3)', border: '1px solid var(--line-2)', borderRadius: 10, padding: '6px 10px', gap: 3, alignItems: 'baseline' }}
+    >
+      <input
+        value={txt}
+        inputMode="decimal"
+        enterKeyHint="done"
+        aria-label={label}
+        onChange={(e) => setTxt(e.target.value)}
+        onFocus={(e) => e.target.select()}
+        onBlur={(e) => commit(e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+        style={{
+          width: suffix ? 44 : 40,
+          textAlign: 'center',
+          background: 'transparent',
+          border: 'none',
+          outline: 'none',
+          color: 'var(--text)',
+          fontFamily: 'var(--font-mono)',
+          fontSize: 18,
+          fontWeight: 650,
+          fontVariantNumeric: 'tabular-nums',
+          padding: 0,
+        }}
+      />
+      {suffix ? <span className="faint" style={{ fontSize: 11 }}>{suffix}</span> : null}
+    </div>
+  );
+}
+
+/* ---- A single set row: inline editable until marked complete ---- */
 function SetRow({
   idx,
   set,
   ex,
   log,
   onLog,
+  onRemove,
+  canRemove,
   unit,
 }: {
   idx: number;
@@ -99,6 +253,8 @@ function SetRow({
   ex: Exercise;
   log: LoggedSet | null;
   onLog: (payload: LoggedSet | null) => void;
+  onRemove: () => void;
+  canRemove: boolean;
   unit: string;
 }) {
   const timed = ex.type === 'timed';
@@ -108,7 +264,6 @@ function SetRow({
   const logged = log && !isTimedSet(set) ? (log as { weight: number; reps: number }) : null;
   const [weight, setWeight] = useState(logged ? logged.weight : planW || 0);
   const [reps, setReps] = useState(logged ? logged.reps : planR || 0);
-  const [editing, setEditing] = useState(false);
   const [holding, setHolding] = useState(false);
   const [held, setHeld] = useState(0);
   const durationSec = isTimedSet(set) ? set.durationSec : 0;
@@ -125,90 +280,67 @@ function SetRow({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [holding, held]);
 
+  const removeBtn = canRemove ? (
+    <button
+      className="icon-btn"
+      style={{ width: 36, height: 36, color: 'var(--text-faint)', flexShrink: 0 }}
+      onClick={onRemove}
+      aria-label={`Remove set ${idx + 1}`}
+    >
+      <Icon name="trash" size={15} />
+    </button>
+  ) : null;
+
   if (timed) {
     return (
       <div className="card-2" style={{ padding: 14, borderColor: done ? 'var(--accent)' : 'var(--line)' }}>
-        <div className="row between">
+        <div className="row between gap8">
           <div className="row gap10">
             <div className="mono faint" style={{ width: 18 }}>{idx + 1}</div>
             <div>
               <div className="title">{holding ? fmtTime(durationSec - held) : fmtTime(durationSec)}</div>
-              <div className="label">Hold · {set.restSec}s rest</div>
+              <div className="label">Hold · {isTimedSet(set) ? set.restSec : 0}s rest</div>
             </div>
           </div>
-          {done ? (
-            <span className="chip accent">
-              <Icon name="check" size={12} /> Done
-            </span>
-          ) : holding ? (
-            <button className="btn ghost" style={{ height: 38 }} onClick={() => { setHolding(false); setHeld(0); }}>
-              Stop
-            </button>
-          ) : (
-            <button className="btn primary" style={{ height: 38 }} onClick={() => { setHeld(0); setHolding(true); }}>
-              Start
-            </button>
-          )}
+          <div className="row gap6" style={{ flexShrink: 0 }}>
+            {!holding && removeBtn}
+            {done ? (
+              <button
+                className="icon-btn"
+                style={{ background: 'var(--accent)', color: 'var(--accent-ink)', border: 'none' }}
+                onClick={() => onLog(null)}
+                aria-label="Un-log set"
+              >
+                <Icon name="check" size={18} />
+              </button>
+            ) : holding ? (
+              <button className="btn ghost" style={{ height: 38 }} onClick={() => { setHolding(false); setHeld(0); }}>
+                Stop
+              </button>
+            ) : (
+              <button className="btn primary" style={{ height: 38 }} onClick={() => { setHeld(0); setHolding(true); }}>
+                Start
+              </button>
+            )}
+          </div>
         </div>
       </div>
     );
   }
 
-  // Expanded editor
-  if (editing && !done) {
+  // Done → locked read-only row; uncheck to edit again.
+  if (done) {
     return (
-      <div className="card-2" style={{ padding: '12px 14px', borderColor: 'var(--accent)' }}>
-        <div className="row between" style={{ marginBottom: 10 }}>
-          <span className="eyebrow">Set {idx + 1}</span>
-          <button
-            className="btn ghost"
-            style={{ height: 30, fontSize: 12, padding: '0 10px' }}
-            onClick={() => {
-              setWeight(logged ? logged.weight : planW || 0);
-              setReps(logged ? logged.reps : planR || 0);
-              setEditing(false);
-            }}
-          >
-            Cancel
-          </button>
-        </div>
-        <div className="row between" style={{ marginBottom: 8 }}>
-          <span className="label">Weight</span>
-          <Stepper value={weight} onChange={setWeight} step={5} suffix={unit} />
-        </div>
-        <div className="row between">
-          <span className="label">Reps</span>
-          <Stepper value={reps} onChange={setReps} step={1} />
-        </div>
-        <div className="row between" style={{ margin: '12px 2px 12px' }}>
-          <span className="label">Est. 1RM</span>
-          <span className="mono accent" style={{ fontSize: 15, fontWeight: 650 }}>
-            ~{epley1RM(weight, reps)} {unit}
-          </span>
-        </div>
-        <button className="btn primary block" style={{ height: 46 }} onClick={() => { setEditing(false); onLog({ weight, reps, done: true }); }}>
-          <Icon name="check" size={18} /> Log set
-        </button>
-      </div>
-    );
-  }
-
-  // Collapsed row
-  return (
-    <div
-      className="card-2"
-      style={{
-        padding: '10px 12px',
-        borderColor: done ? 'color-mix(in oklch,var(--accent) 50%,var(--line))' : 'var(--line)',
-        background: done ? 'color-mix(in oklch,var(--accent) 7%,var(--surface-2))' : 'var(--surface-2)',
-      }}
-    >
-      <div className="row between gap10">
-        <button
-          onClick={() => !done && setEditing(true)}
-          style={{ background: 'none', border: 'none', cursor: done ? 'default' : 'pointer', textAlign: 'left', flex: 1, minWidth: 0, padding: 0, color: 'inherit' }}
-        >
-          <div className="row gap8">
+      <div
+        className="card-2"
+        style={{
+          padding: '10px 12px',
+          borderColor: 'color-mix(in oklch,var(--accent) 50%,var(--line))',
+          background: 'color-mix(in oklch,var(--accent) 7%,var(--surface-2))',
+        }}
+      >
+        <div className="row between gap10">
+          <div className="row gap8" style={{ flex: 1, minWidth: 0, alignItems: 'baseline' }}>
             <span className="mono faint" style={{ width: 16, fontSize: 13, flexShrink: 0 }}>{idx + 1}</span>
             <span className="mono" style={{ fontSize: 18, fontWeight: 650 }}>
               {weight}
@@ -216,32 +348,44 @@ function SetRow({
             </span>
             <span className="faint">×</span>
             <span className="mono" style={{ fontSize: 18, fontWeight: 650 }}>{reps}</span>
-            {!done && (
-              <span className="faint row gap4" style={{ fontSize: 11, marginLeft: 'auto', paddingRight: 4 }}>
-                <Icon name="edit" size={13} /> edit
-              </span>
-            )}
           </div>
-        </button>
-        {done ? (
+          <div className="row gap6" style={{ flexShrink: 0 }}>
+            {removeBtn}
+            <button
+              className="icon-btn"
+              style={{ background: 'var(--accent)', color: 'var(--accent-ink)', border: 'none' }}
+              onClick={() => onLog(null)}
+              aria-label="Un-log set to edit"
+            >
+              <Icon name="check" size={18} />
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Not done → inline editable weight & reps.
+  return (
+    <div className="card-2" style={{ padding: '8px 10px 8px 12px', borderColor: 'var(--line)' }}>
+      <div className="row between gap8">
+        <div className="row gap8" style={{ flex: 1, minWidth: 0, alignItems: 'center' }}>
+          <span className="mono faint" style={{ width: 14, fontSize: 13, flexShrink: 0 }}>{idx + 1}</span>
+          <NumField value={weight} onChange={setWeight} suffix={unit} label={`Set ${idx + 1} weight`} />
+          <span className="faint">×</span>
+          <NumField value={reps} onChange={setReps} label={`Set ${idx + 1} reps`} />
+        </div>
+        <div className="row gap6" style={{ flexShrink: 0 }}>
+          {removeBtn}
           <button
             className="icon-btn"
-            style={{ background: 'var(--accent)', color: 'var(--accent-ink)', border: 'none', flexShrink: 0 }}
-            onClick={() => onLog(null)}
-            aria-label="Un-log set"
+            style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }}
+            onClick={() => onLog({ weight, reps, done: true })}
+            aria-label="Mark set complete"
           >
             <Icon name="check" size={18} />
           </button>
-        ) : (
-          <button
-            className="icon-btn"
-            style={{ borderColor: 'var(--accent)', color: 'var(--accent)', flexShrink: 0 }}
-            onClick={() => { setEditing(false); onLog({ weight, reps, done: true }); }}
-            aria-label="Log set"
-          >
-            <Icon name="check" size={18} />
-          </button>
-        )}
+        </div>
       </div>
     </div>
   );
@@ -249,11 +393,12 @@ function SetRow({
 
 /* ---- Focus view: one exercise ---- */
 function FocusExercise({
-  state, day, ei, exMap, onLog, onSwap, onOpen, onPrev, onNext, unit,
+  state, day, ei, exMap, onLog, onSwap, onOpen, onPrev, onNext, onAddSet, onRemoveSet, unit,
 }: {
   state: AppState; day: PlanDay; ei: number; exMap: ExMap;
   onLog: LogFn; onSwap: () => void; onOpen: (id: string) => void;
-  onPrev: () => void; onNext: () => void; unit: string;
+  onPrev: () => void; onNext: () => void;
+  onAddSet: () => void; onRemoveSet: (si: number) => void; unit: string;
 }) {
   const item = day.exercises[ei];
   const meta = exMap[item.exerciseId] || { name: item.exerciseId, group: '', equipment: '', type: 'weight' } as Exercise;
@@ -323,8 +468,13 @@ function FocusExercise({
             unit={unit}
             log={getLog(state, day.id, ei, si)}
             onLog={(payload) => onLog(day.id, ei, si, payload, set.restSec)}
+            onRemove={() => onRemoveSet(si)}
+            canRemove={item.sets.length > 1}
           />
         ))}
+        <button className="btn ghost block" style={{ height: 44, borderStyle: 'dashed', marginTop: 2 }} onClick={onAddSet}>
+          <Icon name="plus" size={16} /> Add set
+        </button>
       </div>
 
       {done && ei < total - 1 && (
@@ -447,6 +597,8 @@ export interface TodayScreenProps {
   onSwap: (ei: number) => void;
   onAddExercise: () => void;
   onDeleteExercise: (ei: number) => void;
+  onAddSet: (ei: number) => void;
+  onRemoveSet: (ei: number, si: number) => void;
   onOpenExercise: (id: string) => void;
   restState: RestState | null;
   setRestState: (r: RestState | null) => void;
@@ -457,7 +609,7 @@ export interface TodayScreenProps {
 export function TodayScreen(props: TodayScreenProps) {
   const {
     state, weekName, day, exMap, unit, onLog, onCompleteDay, onUncompleteDay, onAdvance,
-    onSwap, onAddExercise, onDeleteExercise, onOpenExercise, restState, setRestState, focusIdx, setFocusIdx,
+    onSwap, onAddExercise, onDeleteExercise, onAddSet, onRemoveSet, onOpenExercise, restState, setRestState, focusIdx, setFocusIdx,
   } = props;
   const [mode, setMode] = useState<'focus' | 'day'>('focus');
 
@@ -538,6 +690,8 @@ export function TodayScreen(props: TodayScreenProps) {
             onOpen={onOpenExercise}
             onPrev={() => setFocusIdx((i) => Math.max(0, i - 1))}
             onNext={() => setFocusIdx((i) => Math.min(day.exercises.length - 1, i + 1))}
+            onAddSet={() => onAddSet(safeIdx)}
+            onRemoveSet={(si) => onRemoveSet(safeIdx, si)}
           />
         ) : (
           <DayOverview
@@ -596,7 +750,7 @@ export function TodayScreen(props: TodayScreenProps) {
       </div>
 
       {restState && (
-        <RestTimer key={restState.key} secs={restState.secs} onDone={() => setRestState(null)} onClose={() => setRestState(null)} />
+        <RestTimer key={restState.key} secs={restState.secs} onClose={() => setRestState(null)} />
       )}
     </div>
   );

@@ -103,11 +103,17 @@ body {
   background: radial-gradient(120% 60% at 50% -10%, #ffffff 0%, var(--bg) 55%);
 }
 
-/* When installed as a PWA, fill the full screen — no phone frame */
+/* When installed as a PWA, fill the full screen — no phone frame.
+   iOS standalone reports 100dvh/100vh shorter than the real screen,
+   which left a gap below the tab bar. Pinning the surface with
+   position:fixed + inset:0 fills the true viewport reliably so the
+   bottom nav sits flush against the bottom edge. */
 @media (display-mode: standalone) {
   .app {
+    position: fixed;
+    inset: 0;
     width: 100%;
-    height: 100dvh;
+    height: auto;
     border-radius: 0;
     border: none;
     box-shadow: none;

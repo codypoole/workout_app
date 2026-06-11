@@ -5,6 +5,7 @@
    ============================================================ */
 import { useEffect, useMemo, useState } from 'react';
 import type { AppState, Exercise, LoggedSet, Plan, Settings } from '@/types';
+import { isTimedSet } from '@/types';
 import { buildExMap } from '@/lib/selectors';
 import { store, useStoreSnapshot } from '@/data/useStore';
 
@@ -181,6 +182,44 @@ export default function App() {
     setFocusIdx((i) => Math.max(0, Math.min(i, len - 2)));
   }
 
+  function addSetToDay(ei: number) {
+    store.update((st) => {
+      const plan = clone(st.plan);
+      const exItem = plan.weeks[active.week].days[active.day].exercises[ei];
+      const meta = buildExMap(st.library)[exItem.exerciseId];
+      const last = exItem.sets[exItem.sets.length - 1];
+      let newSet;
+      if (meta && meta.type === 'timed') {
+        newSet = last && isTimedSet(last) ? { durationSec: last.durationSec, restSec: last.restSec } : { durationSec: 30, restSec: 45 };
+      } else {
+        newSet = last && !isTimedSet(last) ? { weight: last.weight, reps: last.reps, restSec: last.restSec } : { weight: 0, reps: 8, restSec: 90 };
+      }
+      exItem.sets.push(newSet);
+      return { ...st, plan };
+    });
+  }
+
+  function removeSetFromDay(ei: number, si: number) {
+    store.update((st) => {
+      const plan = clone(st.plan);
+      const dayObj = plan.weeks[active.week].days[active.day];
+      const exItem = dayObj.exercises[ei];
+      if (exItem.sets.length <= 1) return st; // keep at least one set
+      exItem.sets.splice(si, 1);
+      // re-index the per-set logs for this exercise so they stay aligned
+      const dayId = dayObj.id;
+      const exLogs = (st.logs[dayId] || {})[ei] || {};
+      const newExLogs: Record<number, LoggedSet> = {};
+      Object.keys(exLogs).forEach((k) => {
+        const idx = +k;
+        if (idx < si) newExLogs[idx] = exLogs[idx];
+        else if (idx > si) newExLogs[idx - 1] = exLogs[idx];
+      });
+      const dayLogs = { ...(st.logs[dayId] || {}), [ei]: newExLogs };
+      return { ...st, plan, logs: { ...st.logs, [dayId]: dayLogs } };
+    });
+  }
+
   function advanceDay() {
     let { week, day } = active;
     for (let guard = 0; guard < 60; guard++) {
@@ -290,6 +329,8 @@ export default function App() {
               onSwap={(ei) => setSwap({ ei })}
               onAddExercise={() => setAddOpen(true)}
               onDeleteExercise={removeExerciseFromDay}
+              onAddSet={addSetToDay}
+              onRemoveSet={removeSetFromDay}
               onOpenExercise={(id) => setDetailId(id)}
               restState={restState}
               setRestState={setRestState}
