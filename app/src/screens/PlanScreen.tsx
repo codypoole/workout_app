@@ -519,6 +519,11 @@ function PlanBuilder({ library, onImport }: { library: Exercise[]; onImport: (pl
   if (step === 'info') {
     return (
       <div className="col gap16" style={{ paddingTop: 6 }}>
+        <button className="btn ghost block" style={{ height: 44, fontSize: 13 }} onClick={() => setShowImportJson(true)}>
+          <Icon name="upload" size={16} /> Import JSON instead
+        </button>
+        <div className="divide" />
+
         <div className="col gap6">
           <span className="eyebrow">Plan name</span>
           <input className="field" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Push Pull Legs" autoFocus />
@@ -568,11 +573,6 @@ function PlanBuilder({ library, onImport }: { library: Exercise[]; onImport: (pl
 
         <button className="btn primary block lg" disabled={!name.trim()} onClick={() => setStep('days')}>
           Next: Build schedule <Icon name="chevron" size={16} />
-        </button>
-
-        <div className="divide" />
-        <button className="btn ghost block" style={{ height: 44, fontSize: 13 }} onClick={() => setShowImportJson(true)}>
-          <Icon name="upload" size={16} /> Import JSON instead
         </button>
 
         <Sheet open={showImportJson} onClose={() => setShowImportJson(false)} title="Import plan" full>

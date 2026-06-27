@@ -475,6 +475,24 @@ textarea.field {
   transition: background 0.18s;
 }
 
+/* PWA (installed/standalone): pin the tab bar flush to the bottom of the
+   screen, independent of any viewport-height quirk, and pad scroll content so
+   nothing hides behind it. Placed after the base .tabbar/.scroll rules so it
+   wins on source order. The tab bar's own padding-bottom keeps the buttons
+   clear of the home indicator while its background reaches the screen edge. */
+@media (display-mode: standalone) {
+  .tabbar:not(.dock) {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 50;
+  }
+  .scroll {
+    padding-bottom: calc(70px + env(safe-area-inset-bottom));
+  }
+}
+
 /* sheet / modal */
 .sheet-backdrop {
   position: absolute;
